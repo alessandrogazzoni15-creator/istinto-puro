@@ -11,10 +11,12 @@ export interface Team {
   logo: string;
   /** Altre voci Wikidata della stessa squadra rifondata (es. Vicenza Calcio per L.R. Vicenza). */
   related: string[];
+  /** Titolo della voce su it.wikipedia, vuoto se non c'è. */
+  itwiki: string;
 }
 
 /** Riga di public/teams.json, vedi scripts/build-teams.mjs. */
-export type TeamRow = [number, string, string, string, 0 | 1, number, string, number[]?];
+export type TeamRow = [number, string, string, string, 0 | 1, number, string, string, number[]?];
 
 interface Indexed {
   team: Team;
@@ -28,7 +30,7 @@ export class TeamIndex {
   private byId = new Map<string, Team>();
 
   constructor(rows: TeamRow[]) {
-    this.items = rows.map(([num, name, aliases, country, national, popularity, logo, related]) => {
+    this.items = rows.map(([num, name, aliases, country, national, popularity, logo, itwiki, related]) => {
       const team: Team = {
         id: `Q${num}`,
         name,
@@ -38,6 +40,7 @@ export class TeamIndex {
         popularity,
         logo,
         related: (related ?? []).map((n) => `Q${n}`),
+        itwiki: itwiki ?? '',
       };
       this.byId.set(team.id, team);
       const variants = [name, ...team.aliases];

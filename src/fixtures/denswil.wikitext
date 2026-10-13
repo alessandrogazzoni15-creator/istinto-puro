@@ -1,0 +1,54 @@
+{{Sportivo
+|Nome = Stefano Denswil
+|Immagine = FC Salzburg vs. Club Brügge Denswil.jpg
+|Didascalia = Denswil in azione con il [[Club Brugge]]
+|Sesso = M
+|CodiceNazione = {{NLD}}<br>{{SUR}} (dal 2023)
+|TermineCarriera = 
+|Disciplina = Calcio
+|Ruolo = [[Difensore (calcio)|Difensore]]
+|Squadra = {{Calcio AEL Limassol}}
+|SquadreGiovanili = {{Carriera sportivo
+ |sport = calcio |pos = G
+ |1999-2001|Hellas Sport|
+ |2001-2012|Ajax|
+}}
+|Squadre = {{Carriera sportivo
+ |sport = calcio |pos = G
+ |2011-2015|Ajax|22 (1)
+ |2013-2015|Jong Ajax|16 (2)
+ |2015-2019|Club Bruges|144 (6)
+ |2019-2021|Bologna|31 (0)
+ |2021|→ Club Bruges|12 (0)
+ |2021-2025|Trabzonspor|82 (3)
+ |2025-2026|Kayserispor|31 (1)
+ |2026-|AEL Limassol|0 (0)
+}}
+|SquadreNazionali = {{Carriera sportivo
+ |2007-2008|{{NazU|CA|NLD|M|15}}|5 (0)
+ |2009|{{NazU|CA|NLD|M|16}}|2 (0)
+ |2009-2010|{{NazU|CA|NLD|M|17}}|11 (0)
+ |2010|{{NazU|CA|NLD|M|18}}|1 (0)
+ |2011-2012|{{NazU|CA|NLD|M|19}}|6 (0)
+ |2012-2013|{{NazU|CA|NLD|M|20}}|5 (2)
+ |2013-2015|{{NazU|CA|NLD|M|21}}|7 (0)
+ |2023-|{{Naz|CA|SUR|M}}|18 (0)
+}}
+|Aggiornato = 14 aprile 2026
+}}
+{{Bio
+|Nome = Stefano Wilfred
+|Cognome = Denswil
+|Sesso = M
+|LuogoNascita = Zaandam
+|GiornoMeseNascita = 7 maggio
+|AnnoNascita = 1993
+|LuogoMorte = 
+|GiornoMeseMorte = 
+|AnnoMorte = 
+|Epoca = 2000
+|Attività = calciatore
+|Nazionalità = surinamese
+|Cittadinanza = olandese
+|PostNazionalità = , [[Difensore (calcio)|difensore]] dell'{{Calcio AEL Limassol|N}} e della [[Nazionale maschile di calcio del Suriname|nazionale surinamese]]
+}}

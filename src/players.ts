@@ -1,3 +1,5 @@
+import { fetchRetry } from './net';
+
 export interface Spell {
   teamId: string;
   from: number | null;
@@ -15,6 +17,10 @@ export interface Player {
   spells: Spell[];
   /** Ultimo anno noto in una delle squadre scelte, per ordinare dal più recente. */
   lastYear: number;
+  /** URL diretto della foto, quando non viene da Commons (giocatori trovati su Wikipedia). */
+  thumb?: string;
+  /** Trovato solo su Wikipedia: su Wikidata la carriera è incompleta. */
+  fromWikipedia?: boolean;
 }
 
 const ENDPOINT = 'https://query.wikidata.org/sparql';
@@ -31,11 +37,15 @@ export function buildQuery(groups: TeamGroup[]): string {
   for (const id of groups.flat()) {
     if (!/^Q\d+$/.test(id)) throw new Error(`ID squadra non valido: ${id}`);
   }
+  // Non si usa wdt:P54: quando una squadra (di solito quella attuale) ha rango "preferito",
+  // wdt:P54 restituisce solo quella e nasconde il resto della carriera. Si leggono tutte le
+  // dichiarazioni, partendo dalla squadra (?m ps:P54 squadra): è il verso in cui l'indice di
+  // Wikidata è veloce. Le dichiarazioni deprecate si scartano nella parte sotto.
   const membership = groups
     .map((g, i) =>
       g.length === 1
-        ? `  ?p wdt:P54 wd:${g[0]} .`
-        : `  ?p wdt:P54 ?g${i} . VALUES ?g${i} { ${g.map((id) => `wd:${id}`).join(' ')} }`,
+        ? `  ?m${i} ps:P54 wd:${g[0]} . ?p p:P54 ?m${i} .`
+        : `  VALUES ?g${i} { ${g.map((id) => `wd:${id}`).join(' ')} }\n  ?m${i} ps:P54 ?g${i} . ?p p:P54 ?m${i} .`,
     )
     .join('\n');
   const all = groups.flat().map((id) => `wd:${id}`);
@@ -43,8 +53,9 @@ export function buildQuery(groups: TeamGroup[]): string {
   (SAMPLE(?itwiki) AS ?it) (SAMPLE(?enwiki) AS ?en)
   (GROUP_CONCAT(DISTINCT ?spell; separator="|") AS ?spells) WHERE {
 ${membership}
-  ?p p:P54 ?st . ?st ps:P54 ?team .
+  ?p p:P54 ?st . ?st ps:P54 ?team ; wikibase:rank ?rank .
   VALUES ?team { ${all.join(' ')} }
+  FILTER(?rank != wikibase:DeprecatedRank)
   OPTIONAL { ?st pq:P580 ?start }
   OPTIONAL { ?st pq:P582 ?end }
   OPTIONAL { ?st pq:P1642 ?how }
@@ -67,6 +78,15 @@ interface Binding {
 const year = (s: string): number | null => (s ? Number(s) : null);
 
 /** Le voci secondarie di un gruppo vengono ricondotte alla voce principale (la prima). */
+/** "2012-2014", "2005", "2019-" -> anni di inizio e fine. */
+export function parseYears(text: string): { from: number | null; to: number | null } {
+  const m = text.match(/(\d{4})\s*[-–]?\s*(\d{4})?/);
+  if (!m) return { from: null, to: null };
+  const from = Number(m[1]);
+  const open = /\d{4}\s*[-–]\s*$/.test(text.replace(/\(.*\)/, '').trim());
+  return { from, to: m[2] ? Number(m[2]) : open ? null : from };
+}
+
 export function parseSpells(raw: string, groups: TeamGroup[]): Spell[] {
   const primary = new Map<string, string>();
   for (const g of groups) for (const id of g) primary.set(id, g[0]);
@@ -106,7 +126,7 @@ export function parsePlayers(bindings: Binding[], groups: TeamGroup[]): Player[]
   });
 }
 
-const CACHE_PREFIX = 'ip:players:v2:';
+const CACHE_PREFIX = 'ip:players:v3:';
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 3;
 
 function cacheKey(groups: TeamGroup[]): string {
@@ -150,7 +170,7 @@ export async function findCommonPlayers(groups: TeamGroup[], signal?: AbortSigna
   const url = `${ENDPOINT}?format=json&query=${encodeURIComponent(buildQuery(groups))}`;
   let res: Response;
   try {
-    res = await fetch(url, { signal, headers: { Accept: 'application/sparql-results+json' } });
+    res = await fetchRetry(url, { signal, headers: { Accept: 'application/sparql-results+json' } }, 2);
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err;
     throw new QueryError('Connessione non riuscita', 'network');

@@ -518,6 +518,18 @@ a {
   background: var(--accent-soft);
 }
 
+.extra-status {
+  margin: 10px 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .extra-status.is-running {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}
+
 .verdict {
   display: flex;
   align-items: center;

@@ -1,0 +1,52 @@
+{{Sportivo
+|Disciplina = Calcio
+|Nome = Francesco Coco
+|Immagine = Francesco Coco Milan.png
+|Didascalia = Coco al Milan 
+|Sesso = M
+|CodiceNazione = {{ITA}}
+|TermineCarriera = 1º settembre 2007
+|Ruolo = [[Difensore (calcio)|Difensore]]
+|SquadreGiovanili = {{Carriera sportivo
+|sport = calcio |pos = G
+ |1993-1995 |Milan |
+}}
+|Squadre = {{Carriera sportivo
+|sport = calcio |pos = G
+ |1995-1997 |Milan |19 (0)
+ |1997-1998 |→ Vicenza |20 (0)
+ |1998-1999 |Milan |6 (0)
+ |1999-2000 |→ Torino |21 (0)
+ |2000-2001 |Milan |31 (2)
+ |2001-2002 |→ Barcellona |23 (0)
+ |2002-2005 |Inter |26 (0)
+ |2005-2006 |→ Livorno |28 (0)
+ |2006-2007 |Inter |0 (0)
+ |2007 |→ Torino |3 (0)
+}}
+|SquadreNazionali = {{Carriera sportivo
+ |1994-1995 |{{NazU|CA|ITA|M|18}} |6 (0)
+ |1995-2000 |{{NazU|CA|ITA|M|21}} |20 (1)
+ |1997 |{{NazU|CA|ITA|M|23}} |2 (0)
+ |2000-2002 |{{Naz|CA|ITA|M}} |17 (0)
+}}
+|Vittorie = {{MedaglieCompetizione|Europei di calcio Under-21}}
+{{MedaglieOro|[[Campionato europeo di calcio Under-21 2000|Slovacchia 2000]]}}
+{{MedaglieCompetizione|Giochi del Mediterraneo}}
+{{MedaglieOro|[[Calcio ai XIII Giochi del Mediterraneo|Bari 1997]]}}
+}}
+{{Bio
+|Nome = Francesco
+|Cognome = Coco
+|Sesso = M
+|LuogoNascita = Paternò
+|GiornoMeseNascita = 8 gennaio
+|AnnoNascita = 1977
+|LuogoMorte = 
+|GiornoMeseMorte = 
+|AnnoMorte = 
+|Epoca = 2000
+|Attività = ex calciatore
+|Nazionalità = italiano
+|PostNazionalità = , di ruolo [[Difensore (calcio)|difensore]]
+}}

@@ -14,6 +14,7 @@ import {
 } from './players';
 import { displayName, loadTeams, logoUrl, teamIds, type Team, type TeamIndex } from './teams';
 import { initials, normalize } from './text';
+import { enrichFromWikipedia, type EnrichProgress } from './enrich';
 import { checkOnWikipedia, type WikiCheck } from './wikipedia';
 
 const MAX_TEAMS = 6;
@@ -43,6 +44,8 @@ const state = {
   revealed: new Set<string>(),
   /** Animazione d'ingresso solo quando arrivano risultati nuovi. */
   animate: false,
+  /** Giocatori aggiunti dalla seconda fonte (Wikipedia), arrivano dopo quelli di Wikidata. */
+  extra: { kind: 'idle' } as { kind: 'idle' } | { kind: 'running' | 'done' | 'error'; progress: EnrichProgress },
   /** Controllo di riserva su Wikipedia per un nome che Wikidata non dà. */
   wiki: { kind: 'idle' } as
     | { kind: 'idle' }
@@ -225,6 +228,7 @@ function teamsChanged() {
   syncUrl();
   state.filter = '';
   state.wiki = { kind: 'idle' };
+  state.extra = { kind: 'idle' };
   state.revealed.clear();
   controller?.abort();
   if (state.teams.length < 2) {
@@ -251,6 +255,80 @@ async function runSearch() {
     state.status = { kind: 'error', message: errorMessage(err) };
   }
   renderResults();
+  if (state.status.kind === 'done') runEnrich(state.status.players, signal);
+}
+
+async function runEnrich(players: Player[], signal: AbortSignal) {
+  const groups = state.teams.map(teamIds);
+  const slots = groups.map((g) => g.map((id) => state.index?.get(id)?.itwiki ?? '').filter(Boolean));
+  const empty: EnrichProgress = { checked: 0, total: 0, found: [], partial: false };
+  state.extra = { kind: 'running', progress: empty };
+  renderExtra();
+  let shown = 0;
+  let last = empty;
+  try {
+    const progress = await enrichFromWikipedia(
+      groups,
+      slots,
+      new Set(players.map((p) => p.id)),
+      (p) => {
+        if (signal.aborted) return;
+        last = p;
+        state.extra = { kind: 'running', progress: p };
+        renderExtra();
+        if (p.found.length !== shown) {
+          shown = p.found.length;
+          renderList();
+        }
+      },
+      signal,
+    );
+    if (signal.aborted) return;
+    state.extra = { kind: 'done', progress };
+  } catch (err) {
+    if ((err as Error).name === 'AbortError' || signal.aborted) return;
+    state.extra = { kind: 'error', progress: last };
+  }
+  renderExtra();
+  renderList();
+}
+
+/** Tutti i giocatori: Wikidata più quelli trovati su Wikipedia. */
+function allPlayers(): Player[] {
+  if (state.status.kind !== 'done') return [];
+  return state.extra.kind === 'idle' ? state.status.players : [...state.status.players, ...state.extra.progress.found];
+}
+
+function countTitle(n: number): string {
+  if (n === 0) return 'Nessun giocatore';
+  return `${n} ${n === 1 ? 'giocatore' : 'giocatori'}`;
+}
+
+/** Contatore in alto e riga di stato della seconda fonte, senza toccare l'elenco. */
+function renderExtra() {
+  const count = results.querySelector<HTMLElement>('.count');
+  if (count && state.status.kind === 'done') count.textContent = countTitle(allPlayers().length);
+  const line = results.querySelector<HTMLElement>('#extra-status');
+  if (!line) return;
+  const x = state.extra;
+  let text = '';
+  if (x.kind === 'running') {
+    text = x.progress.total
+      ? `Cerco su Wikipedia chi manca a Wikidata: ${x.progress.checked} di ${x.progress.total} controllati`
+      : 'Cerco su Wikipedia chi manca a Wikidata...';
+    if (x.progress.found.length) text += `, ${x.progress.found.length} trovati`;
+  } else if (x.kind === 'done' && x.progress.found.length) {
+    const n = x.progress.found.length;
+    text = `${n} ${n === 1 ? 'giocatore aggiunto' : 'giocatori aggiunti'} da Wikipedia, dove la loro carriera è più completa.`;
+  } else if (x.kind === 'error') {
+    text = 'Il controllo su Wikipedia non è riuscito: l’elenco contiene solo i dati di Wikidata.';
+  }
+  if (x.kind === 'done' && x.progress.partial) {
+    text += `${text ? ' ' : ''}Con queste squadre i candidati su Wikipedia erano troppi per controllarli tutti.`;
+  }
+  line.textContent = text;
+  line.hidden = !text;
+  line.classList.toggle('is-running', x.kind === 'running');
 }
 
 function errorMessage(err: unknown): string {
@@ -298,12 +376,17 @@ function spellsHtml(p: Player): string {
 
 function avatar(p: Player): string {
   const fallback = `<span class="avatar avatar-empty" aria-hidden="true">${esc(initials(p.name))}</span>`;
-  if (!p.image) return fallback;
-  return `<img class="avatar" src="${esc(imageUrl(p.image, 96))}" alt="" loading="lazy" decoding="async" width="44" height="44" onerror="this.outerHTML=${esc(JSON.stringify(fallback))}">`;
+  const src = p.thumb ?? (p.image ? imageUrl(p.image, 96) : '');
+  if (!src) return fallback;
+  return `<img class="avatar" src="${esc(src)}" alt="" loading="lazy" decoding="async" width="44" height="44" onerror="this.outerHTML=${esc(JSON.stringify(fallback))}">`;
 }
 
 function playerHtml(p: Player, masked: boolean): string {
-  const born = p.born ? `<span class="born">nato nel ${p.born}</span>` : '';
+  const born = p.fromWikipedia
+    ? `<span class="born">da Wikipedia</span>`
+    : p.born
+      ? `<span class="born">nato nel ${p.born}</span>`
+      : '';
   return `
     <li class="player${masked ? ' is-masked' : ''}" data-player="${p.id}">
       ${avatar(p)}
@@ -373,21 +456,8 @@ function renderResults() {
     return;
   }
 
-  const all = s.players;
-  if (all.length === 0) {
-    results.innerHTML = `
-      ${heading('Nessun giocatore')}
-      <div class="notice">
-        <p>Secondo Wikidata nessuno ha giocato in tutte queste squadre.</p>
-        <p class="muted">Se ti viene in mente qualcuno, controlla di aver scelto la squadra giusta: prima squadra, giovanili e femminile sono voci separate.</p>
-      </div>`;
-    return;
-  }
-
-  const title = `${all.length} ${all.length === 1 ? 'giocatore' : 'giocatori'}`;
-
   results.innerHTML = `
-    ${heading(title)}
+    ${heading(countTitle(allPlayers().length))}
     <div class="toolbar">
       <div class="filter">
         <label class="sr-only" for="filter">Controlla un nome</label>
@@ -410,9 +480,11 @@ function renderResults() {
         <button type="button" class="btn btn-ghost" data-share>${icon('link')}<span>Condividi</span></button>
       </div>
     </div>
+    <p id="extra-status" class="extra-status" hidden></p>
     <div id="list-area"></div>
-    <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a>. Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
+    <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> e <a href="https://it.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>. Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
   renderList();
+  renderExtra();
 }
 
 /** Solo l'elenco: così il campo "Controlla un nome" non viene ricreato mentre si scrive. */
@@ -420,7 +492,18 @@ function renderList() {
   const area = results.querySelector<HTMLElement>('#list-area');
   if (!area || state.status.kind !== 'done') return;
   const q = normalize(state.filter);
-  const sorted = sortPlayers(state.status.players, state.sort);
+  const everyone = allPlayers();
+  if (everyone.length === 0) {
+    area.innerHTML =
+      state.extra.kind === 'running'
+        ? ''
+        : `<div class="notice">
+        <p>Nessuno risulta aver giocato in tutte queste squadre.</p>
+        <p class="muted">Se ti viene in mente qualcuno, scrivilo in “Controlla un nome”. E controlla di aver scelto la squadra giusta: prima squadra, giovanili e femminile sono voci separate.</p>
+      </div>`;
+    return;
+  }
+  const sorted = sortPlayers(everyone, state.sort);
   const visible = q ? sorted.filter((p) => matches(p, q)) : sorted;
 
   // In modalità gioco i nomi restano coperti, tranne quelli scoperti o cercati per nome

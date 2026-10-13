@@ -57,7 +57,7 @@ for (const b of base) {
     id,
     links: Number(b.links.value),
     national: prev?.national || b.nat.value === '1',
-    it: '', en: '', aliases: new Set(), country: '', logo: '',
+    it: '', en: '', aliases: new Set(), country: '', logo: '', itwiki: '',
   });
 }
 console.log(`  ${teams.size} squadre`);
@@ -67,13 +67,14 @@ for (let i = 0; i < ids.length; i += BATCH) {
   const chunk = ids.slice(i, i + BATCH);
   console.log(`2/2 Nomi e stemmi ${i + 1}-${i + chunk.length}...`);
   const rows = await sparql(`
-SELECT ?t ?it ?en ?alias ?country ?logo WHERE {
+SELECT ?t ?it ?en ?alias ?country ?logo ?itwiki WHERE {
   VALUES ?t { ${chunk.map((id) => `wd:${id}`).join(' ')} }
   { ?t rdfs:label ?it FILTER(LANG(?it) = "it") }
   UNION { ?t rdfs:label ?en FILTER(LANG(?en) = "en") }
   UNION { ?t skos:altLabel ?alias FILTER(LANG(?alias) IN ("it", "en")) }
   UNION { ?t wdt:P17 ?c . ?c rdfs:label ?country FILTER(LANG(?country) = "it") }
   UNION { ?t wdt:P154 ?logo }
+  UNION { ?itwiki schema:about ?t ; schema:isPartOf <https://it.wikipedia.org/> }
 }`);
   for (const r of rows) {
     const t = teams.get(qid(r.t.value));
@@ -82,6 +83,7 @@ SELECT ?t ?it ?en ?alias ?country ?logo WHERE {
     if (r.alias) t.aliases.add(r.alias.value);
     if (r.country && !t.country) t.country = r.country.value;
     if (r.logo && !t.logo) t.logo = decodeURIComponent(qid(r.logo.value));
+    if (r.itwiki) t.itwiki = decodeURIComponent(qid(r.itwiki.value)).replace(/_/g, ' ');
   }
   await sleep(1500);
 }
@@ -144,7 +146,7 @@ const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').rep
 const MAX_ALIASES = 8;
 
 // Formato compatto: [id numerico, nome, alias separati da "|", paese, nazionale 0/1, popolarità, stemma,
-// (facoltativo) id numerici delle altre voci della stessa squadra rifondata]
+// titolo della voce su it.wikipedia, (facoltativo) id numerici delle altre voci della stessa squadra rifondata]
 const out = [...teams.values()]
   .filter((t) => t.it || t.en)
   .sort((a, b) => b.links - a.links)
@@ -160,7 +162,7 @@ const out = [...teams.values()]
       aliases.push(a);
       if (aliases.length === MAX_ALIASES) break;
     }
-    const row = [Number(t.id.slice(1)), name, aliases.join('|'), t.country, t.national ? 1 : 0, t.links, t.logo];
+    const row = [Number(t.id.slice(1)), name, aliases.join('|'), t.country, t.national ? 1 : 0, t.links, t.logo, t.itwiki];
     if (t.related?.length) row.push(t.related.map((id) => Number(id.slice(1))));
     return row;
   });

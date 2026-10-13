@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildQuery, parsePlayers, parseSpells, sortPlayers } from './players';
+import { buildQuery, parsePlayers, parseSpells, parseYears, sortPlayers } from './players';
 
 describe('query', () => {
   it('chiede i giocatori di tutte le squadre', () => {
     const q = buildQuery([['Q1422'], ['Q2641'], ['Q676899']]);
-    expect(q).toContain('?p wdt:P54 wd:Q1422 .');
-    expect(q).toContain('?p wdt:P54 wd:Q676899 .');
+    expect(q).toContain('?m0 ps:P54 wd:Q1422 . ?p p:P54 ?m0 .');
+    expect(q).toContain('?m2 ps:P54 wd:Q676899 . ?p p:P54 ?m2 .');
+    // wdt:P54 nasconderebbe la carriera di chi ha una squadra attuale con rango preferito
+    expect(q).not.toContain('wdt:P54');
   });
 
   it('per una squadra rifondata accetta una qualsiasi delle sue voci', () => {
@@ -63,5 +65,14 @@ describe('lettura risultati', () => {
     expect(sortPlayers(players, 'famous')[0].name).toBe('Alfa');
     expect(sortPlayers(players, 'recent')[0].name).toBe('Zeta');
     expect(sortPlayers(players, 'alpha')[0].name).toBe('Alfa');
+  });
+});
+
+describe('anni da Wikipedia', () => {
+  it('capisce periodi, anno singolo e carriera in corso', () => {
+    expect(parseYears('2012-2014')).toEqual({ from: 2012, to: 2014 });
+    expect(parseYears('2005')).toEqual({ from: 2005, to: 2005 });
+    expect(parseYears('2019-')).toEqual({ from: 2019, to: null });
+    expect(parseYears('2019–2021')).toEqual({ from: 2019, to: 2021 });
   });
 });

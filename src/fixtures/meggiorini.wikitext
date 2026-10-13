@@ -1,0 +1,56 @@
+{{Sportivo
+|Nome = Riccardo Meggiorini
+|Immagine = Meggiorini69 (cropped).jpg
+|Didascalia = Meggiorini al Chievo nel 2014
+|Sesso = Neutro
+|CodiceNazione = {{ITA}}
+|Disciplina = Calcio
+|Ruolo = [[Allenatore]] <small>(ex [[Attaccante (calcio)|attaccante]])</small>
+|Squadra = 
+|TermineCarriera = 1º luglio 2023 - giocatore
+|SquadreGiovanili = {{Carriera sportivo
+|sport = calcio
+ |1997-2000|Verona|
+ |2000-2003|{{simbolo|Rosso e Blu.svg}} Bovolone|
+ |2003-2004|Inter|
+}}
+|Squadre = {{Carriera sportivo
+|sport = calcio |pos = G
+ |2004-2005|Inter|1 (0)
+ |2005|→ Spezia|10 (0)
+ |2005-2006|→ Pavia|12 (0)
+ |2006-2009|Cittadella|106 (40)<ref>110 (41) se si comprendono i play-off di [[Serie C1 2007-2008]].</ref>
+ |2009-2010|Bari|31 (5)
+ |2010-2011|Bologna|29 (1)
+ |2011-2012|→ Novara|13 (1)
+ |2012-2014|Torino|83 (7)
+ |2014-2020|Chievo|148 (23)
+ |2020-2022|Vicenza|57 (16)<ref>59 (16) se si comprendono i play-out di [[Serie B 2021-2022]].</ref>
+ |2022-2023|San Giovanni Lupatoto|19 (3)
+}}
+|SquadreNazionali = {{Carriera sportivo
+ |2004|{{NazU|CA|ITA|M|19}}|1 (0)
+ |2005|{{NazU|CA|ITA|M|20}}|2 (0)
+}}
+|Allenatore = {{Carriera sportivo
+ |sport = calcio |pos = A
+ |2023-2024|Villafranca Veronese|<small>Vice</small>
+}}
+|Aggiornato = 1º luglio 2023
+}}
+{{Bio
+|Nome = Riccardo
+|Cognome = Meggiorini
+|Sesso = M
+|LuogoNascita = Isola della Scala
+|GiornoMeseNascita = 4 settembre
+|AnnoNascita = 1985
+|LuogoMorte = 
+|GiornoMeseMorte = 
+|AnnoMorte = 
+|Epoca = 1900
+|Epoca2 = 2000
+|Attività = ex calciatore
+|Nazionalità = italiano
+|PostNazionalità = , di ruolo [[Attaccante (calcio)|attaccante]]
+}}
