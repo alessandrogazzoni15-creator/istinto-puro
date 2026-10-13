@@ -1,0 +1,518 @@
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import './style.css';
+
+import { icon, type IconName } from './icons';
+import {
+  findCommonPlayers,
+  imageUrl,
+  QueryError,
+  sortPlayers,
+  type Player,
+  type SortMode,
+  type Spell,
+} from './players';
+import { displayName, loadTeams, logoUrl, type Team, type TeamIndex } from './teams';
+import { initials, normalize } from './text';
+
+const MAX_TEAMS = 6;
+
+const EXAMPLES: { label: string; ids: string[] }[] = [
+  { label: 'Juventus e Napoli', ids: ['Q1422', 'Q2641'] },
+  { label: 'Inter e Milan', ids: ['Q631', 'Q1543'] },
+  { label: 'Barcellona e Real Madrid', ids: ['Q7156', 'Q8682'] },
+  { label: 'Roma, Lazio e Italia', ids: ['Q2739', 'Q2609', 'Q676899'] },
+];
+
+type Status =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'done'; players: Player[] };
+
+const state = {
+  index: null as TeamIndex | null,
+  teams: [] as Team[],
+  suggestions: [] as Team[],
+  active: -1,
+  status: { kind: 'idle' } as Status,
+  sort: 'famous' as SortMode,
+  filter: '',
+  hidden: false,
+  revealed: new Set<string>(),
+  /** Animazione d'ingresso solo quando arrivano risultati nuovi. */
+  animate: false,
+};
+
+const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
+const input = $<HTMLInputElement>('#team-input');
+const list = $<HTMLUListElement>('#team-list');
+const picked = $<HTMLOListElement>('#picked');
+const results = $<HTMLElement>('#results');
+const help = $<HTMLParagraphElement>('#team-help');
+
+document.querySelectorAll<HTMLElement>('[data-icon]').forEach((el) => {
+  el.innerHTML = icon(el.dataset.icon as IconName);
+});
+
+const esc = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+function crest(team: Team, size: 'sm' | 'md'): string {
+  const px = size === 'sm' ? 32 : 64;
+  return team.logo
+    ? `<img class="crest crest-${size}" src="${esc(logoUrl(team.logo, px))}" alt="" loading="lazy" decoding="async" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'crest crest-${size} crest-empty'}))">`
+    : `<span class="crest crest-${size} crest-empty"></span>`;
+}
+
+function teamMeta(team: Team): string {
+  if (team.national) return 'Nazionale';
+  return team.country || 'Club';
+}
+
+// ---------- Squadre scelte e suggerimenti ----------
+
+function renderPicked() {
+  picked.innerHTML = state.teams
+    .map(
+      (t, i) => `
+      <li class="team">
+        ${crest(t, 'md')}
+        <span class="team-text">
+          <span class="team-name">${esc(displayName(t))}</span>
+          <span class="team-meta">${esc(teamMeta(t))}</span>
+        </span>
+        <button class="icon-btn" type="button" data-remove="${i}" aria-label="Togli ${esc(displayName(t))}">${icon('x')}</button>
+      </li>`,
+    )
+    .join('');
+  const full = state.teams.length >= MAX_TEAMS;
+  input.disabled = !state.index || full;
+  input.placeholder = !state.index
+    ? 'Carico le squadre...'
+    : full
+      ? 'Hai raggiunto 6 squadre'
+      : state.teams.length === 0
+        ? 'Cerca una squadra o una nazionale'
+        : 'Aggiungi un’altra squadra';
+}
+
+function renderSuggestions() {
+  const open = state.suggestions.length > 0 || (input.value.trim().length > 1 && state.index !== null);
+  list.hidden = !open;
+  input.setAttribute('aria-expanded', String(open));
+  if (!open) {
+    input.removeAttribute('aria-activedescendant');
+    return;
+  }
+  if (state.suggestions.length === 0) {
+    list.innerHTML = `<li class="suggestion-empty" role="presentation">Nessuna squadra trovata con questo nome</li>`;
+    return;
+  }
+  list.innerHTML = state.suggestions
+    .map(
+      (t, i) => `
+      <li id="opt-${i}" class="suggestion" role="option" aria-selected="${i === state.active}" data-pick="${i}">
+        ${crest(t, 'sm')}
+        <span class="team-text">
+          <span class="team-name">${esc(displayName(t))}</span>
+          <span class="team-meta">${esc(teamMeta(t))}</span>
+        </span>
+      </li>`,
+    )
+    .join('');
+  if (state.active >= 0) input.setAttribute('aria-activedescendant', `opt-${state.active}`);
+  else input.removeAttribute('aria-activedescendant');
+}
+
+function updateSuggestions() {
+  if (!state.index) return;
+  const exclude = new Set(state.teams.map((t) => t.id));
+  state.suggestions = state.index.search(input.value, 8, exclude);
+  state.active = state.suggestions.length ? 0 : -1;
+  renderSuggestions();
+}
+
+function closeSuggestions() {
+  state.suggestions = [];
+  state.active = -1;
+  list.hidden = true;
+  input.setAttribute('aria-expanded', 'false');
+  input.removeAttribute('aria-activedescendant');
+}
+
+function addTeam(team: Team) {
+  if (state.teams.length >= MAX_TEAMS || state.teams.some((t) => t.id === team.id)) return;
+  state.teams.push(team);
+  input.value = '';
+  closeSuggestions();
+  teamsChanged();
+  if (!input.disabled) input.focus();
+}
+
+function removeTeam(i: number) {
+  state.teams.splice(i, 1);
+  teamsChanged();
+  input.focus();
+}
+
+function setTeams(ids: string[]) {
+  if (!state.index) return;
+  state.teams = ids
+    .map((id) => state.index!.get(id))
+    .filter((t): t is Team => !!t)
+    .slice(0, MAX_TEAMS);
+  teamsChanged();
+}
+
+input.addEventListener('input', updateSuggestions);
+input.addEventListener('focus', () => {
+  if (input.value.trim()) updateSuggestions();
+});
+input.addEventListener('blur', () => {
+  // Il click sul suggerimento usa pointerdown, quindi qui si può chiudere subito
+  closeSuggestions();
+});
+input.addEventListener('keydown', (e) => {
+  const n = state.suggestions.length;
+  if (e.key === 'ArrowDown' && n) {
+    e.preventDefault();
+    state.active = (state.active + 1) % n;
+    renderSuggestions();
+  } else if (e.key === 'ArrowUp' && n) {
+    e.preventDefault();
+    state.active = (state.active - 1 + n) % n;
+    renderSuggestions();
+  } else if (e.key === 'Enter') {
+    if (state.active >= 0 && state.suggestions[state.active]) {
+      e.preventDefault();
+      addTeam(state.suggestions[state.active]);
+    }
+  } else if (e.key === 'Escape') {
+    input.value = '';
+    closeSuggestions();
+  } else if (e.key === 'Backspace' && !e.repeat && input.value === '' && state.teams.length) {
+    // Solo con una pressione singola: tenendo premuto per svuotare la ricerca non si cancellano le squadre
+    removeTeam(state.teams.length - 1);
+  }
+});
+list.addEventListener('pointerdown', (e) => {
+  const li = (e.target as HTMLElement).closest<HTMLElement>('[data-pick]');
+  if (!li) return;
+  e.preventDefault();
+  addTeam(state.suggestions[Number(li.dataset.pick)]);
+});
+picked.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-remove]');
+  if (btn) removeTeam(Number(btn.dataset.remove));
+});
+
+// ---------- Ricerca giocatori ----------
+
+let controller: AbortController | null = null;
+
+function teamsChanged() {
+  renderPicked();
+  syncUrl();
+  state.filter = '';
+  state.revealed.clear();
+  controller?.abort();
+  if (state.teams.length < 2) {
+    state.status = { kind: 'idle' };
+    renderResults();
+    return;
+  }
+  runSearch();
+}
+
+async function runSearch() {
+  const ids = state.teams.map((t) => t.id);
+  controller = new AbortController();
+  const { signal } = controller;
+  state.status = { kind: 'loading' };
+  renderResults();
+  try {
+    const players = await findCommonPlayers(ids, signal);
+    if (signal.aborted) return;
+    state.status = { kind: 'done', players };
+    state.animate = true;
+  } catch (err) {
+    if ((err as Error).name === 'AbortError' || signal.aborted) return;
+    state.status = { kind: 'error', message: errorMessage(err) };
+  }
+  renderResults();
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof QueryError) {
+    switch (err.kind) {
+      case 'rate-limit':
+        return 'Wikidata sta ricevendo troppe richieste. Aspetta qualche secondo e riprova.';
+      case 'timeout':
+        return 'Wikidata ci ha messo troppo a rispondere. Di solito al secondo tentativo va.';
+      case 'network':
+        return 'Sembra che tu sia offline. Controlla la connessione e riprova.';
+      default:
+        return `${err.message}. Riprova tra poco.`;
+    }
+  }
+  return 'Qualcosa è andato storto. Riprova.';
+}
+
+// ---------- Risultati ----------
+
+function teamList(teams: Team[]): string {
+  const names = teams.map((t) => displayName(t));
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+}
+
+function years(s: Spell): string {
+  if (s.from === null && s.to === null) return 'anni n.d.';
+  if (s.from !== null && s.from === s.to) return String(s.from);
+  return `${s.from ?? '?'}-${s.to ?? 'oggi'}`;
+}
+
+function spellsHtml(p: Player): string {
+  return state.teams
+    .map((t) => {
+      const mine = p.spells.filter((s) => s.teamId === t.id);
+      if (!mine.length) return '';
+      const text = mine.map((s) => years(s) + (s.loan ? ' (prestito)' : '')).join(', ');
+      return `<li class="spell" title="${esc(displayName(t))}">${crest(t, 'sm')}<span class="sr-only">${esc(displayName(t))}: </span><span class="years">${esc(text)}</span></li>`;
+    })
+    .join('');
+}
+
+function avatar(p: Player): string {
+  const fallback = `<span class="avatar avatar-empty" aria-hidden="true">${esc(initials(p.name))}</span>`;
+  if (!p.image) return fallback;
+  return `<img class="avatar" src="${esc(imageUrl(p.image, 96))}" alt="" loading="lazy" decoding="async" width="44" height="44" onerror="this.outerHTML=${esc(JSON.stringify(fallback))}">`;
+}
+
+function playerHtml(p: Player, masked: boolean): string {
+  const born = p.born ? `<span class="born">nato nel ${p.born}</span>` : '';
+  return `
+    <li class="player${masked ? ' is-masked' : ''}" data-player="${p.id}">
+      ${avatar(p)}
+      <div class="who">
+        ${
+          masked
+            ? `<button type="button" class="reveal" data-reveal="${p.id}">Mostra nome</button>`
+            : `<a class="name" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}<span class="sr-only"> (si apre in una nuova scheda)</span>${icon('external')}</a>`
+        }
+        ${masked ? '' : born}
+      </div>
+      <ul class="spells">${spellsHtml(p)}</ul>
+    </li>`;
+}
+
+function matches(p: Player, q: string): boolean {
+  return normalize(p.name).includes(q);
+}
+
+function skeleton(): string {
+  return Array.from(
+    { length: 6 },
+    () => `
+    <li class="player skeleton" aria-hidden="true">
+      <span class="avatar"></span>
+      <div class="who"><span class="bar" style="width:${50 + Math.round(Math.random() * 30)}%"></span><span class="bar bar-sm"></span></div>
+      <ul class="spells"><li class="bar bar-pill"></li><li class="bar bar-pill"></li></ul>
+    </li>`,
+  ).join('');
+}
+
+function renderResults() {
+  const s = state.status;
+  results.setAttribute('aria-busy', String(s.kind === 'loading'));
+
+  if (s.kind === 'idle') {
+    const need = state.teams.length === 1 ? 'Aggiungi almeno un’altra squadra.' : 'Comincia scegliendo due squadre.';
+    results.innerHTML = `
+      <div class="intro">
+        <p class="intro-title">${need}</p>
+        <p class="intro-text">L’elenco si aggiorna da solo appena ce ne sono due. Oppure prova con:</p>
+        <ul class="examples">
+          ${EXAMPLES.map((ex, i) => `<li><button type="button" class="chip" data-example="${i}">${esc(ex.label)}</button></li>`).join('')}
+        </ul>
+      </div>`;
+    return;
+  }
+
+  const heading = (title: string) => `
+    <header class="results-head">
+      <h2 class="count">${title}</h2>
+      <p class="sub">in ${esc(teamList(state.teams))}</p>
+    </header>`;
+
+  if (s.kind === 'loading') {
+    results.innerHTML = `${heading('Cerco i giocatori...')}<ul class="players">${skeleton()}</ul>`;
+    return;
+  }
+
+  if (s.kind === 'error') {
+    results.innerHTML = `
+      ${heading('Ricerca non riuscita')}
+      <div class="notice notice-error" role="alert">
+        <p>${esc(s.message)}</p>
+        <button type="button" class="btn" data-retry>${icon('retry')}Riprova</button>
+      </div>`;
+    return;
+  }
+
+  const all = s.players;
+  if (all.length === 0) {
+    results.innerHTML = `
+      ${heading('Nessun giocatore')}
+      <div class="notice">
+        <p>Secondo Wikidata nessuno ha giocato in tutte queste squadre.</p>
+        <p class="muted">Se ti viene in mente qualcuno, controlla di aver scelto la squadra giusta: prima squadra, giovanili e femminile sono voci separate.</p>
+      </div>`;
+    return;
+  }
+
+  const title = `${all.length} ${all.length === 1 ? 'giocatore' : 'giocatori'}`;
+
+  results.innerHTML = `
+    ${heading(title)}
+    <div class="toolbar">
+      <div class="filter">
+        <label class="sr-only" for="filter">Controlla un nome</label>
+        <span class="combo-icon">${icon('search')}</span>
+        <input id="filter" class="input input-sm" type="search" placeholder="Controlla un nome" value="${esc(state.filter)}" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      </div>
+      <div class="segmented" role="group" aria-label="Ordina">
+        ${(
+          [
+            ['famous', 'Più noti'],
+            ['recent', 'Recenti'],
+            ['alpha', 'A-Z'],
+          ] as const
+        )
+          .map(([v, l]) => `<button type="button" data-sort="${v}" aria-pressed="${state.sort === v}">${l}</button>`)
+          .join('')}
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" data-hide aria-pressed="${state.hidden}">${icon(state.hidden ? 'eye' : 'eyeSlash')}${state.hidden ? 'Mostra nomi' : 'Nascondi nomi'}</button>
+        <button type="button" class="btn btn-ghost" data-share>${icon('link')}<span>Condividi</span></button>
+      </div>
+    </div>
+    <div id="list-area"></div>
+    <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a>. Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
+  renderList();
+}
+
+/** Solo l'elenco: così il campo "Controlla un nome" non viene ricreato mentre si scrive. */
+function renderList() {
+  const area = results.querySelector<HTMLElement>('#list-area');
+  if (!area || state.status.kind !== 'done') return;
+  const q = normalize(state.filter);
+  const sorted = sortPlayers(state.status.players, state.sort);
+  const visible = q ? sorted.filter((p) => matches(p, q)) : sorted;
+
+  // In modalità gioco i nomi restano coperti, tranne quelli scoperti o cercati per nome
+  const masked = (p: Player) => state.hidden && !state.revealed.has(p.id) && q.length < 3;
+
+  const verdict =
+    state.hidden && q.length >= 3
+      ? visible.length
+        ? `<p class="verdict verdict-yes">${icon('check')}Risposta valida</p>`
+        : `<p class="verdict verdict-no">${icon('x')}Non risulta</p>`
+      : '';
+
+  const body = visible.length
+    ? `<ul class="players${state.animate ? ' animate' : ''}">${visible.map((p) => playerHtml(p, masked(p))).join('')}</ul>`
+    : `<div class="notice"><p>Nessun giocatore valido si chiama “${esc(state.filter.trim())}”.</p></div>`;
+  state.animate = false;
+
+  area.innerHTML = verdict + body;
+}
+
+results.addEventListener('click', (e) => {
+  const t = e.target as HTMLElement;
+  const ex = t.closest<HTMLElement>('[data-example]');
+  if (ex) return setTeams(EXAMPLES[Number(ex.dataset.example)].ids);
+  if (t.closest('[data-retry]')) return runSearch();
+  const sort = t.closest<HTMLElement>('[data-sort]');
+  if (sort) {
+    state.sort = sort.dataset.sort as SortMode;
+    return renderAndKeepFocus(`[data-sort="${state.sort}"]`);
+  }
+  if (t.closest('[data-hide]')) {
+    state.hidden = !state.hidden;
+    state.revealed.clear();
+    return renderAndKeepFocus('[data-hide]');
+  }
+  const reveal = t.closest<HTMLElement>('[data-reveal]');
+  if (reveal) {
+    state.revealed.add(reveal.dataset.reveal!);
+    renderList();
+    results.querySelector<HTMLElement>(`[data-player="${reveal.dataset.reveal}"] .name`)?.focus();
+    return;
+  }
+  const share = t.closest<HTMLElement>('[data-share]');
+  if (share) shareLink(share);
+});
+
+results.addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.id !== 'filter') return;
+  state.filter = t.value;
+  renderList();
+});
+
+function renderAndKeepFocus(selector: string) {
+  renderResults();
+  results.querySelector<HTMLElement>(selector)?.focus();
+}
+
+async function shareLink(btn: HTMLElement) {
+  const url = location.href;
+  const title = `Istinto Puro: ${teamList(state.teams)}`;
+  try {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      await navigator.share({ title, url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    btn.innerHTML = `${icon('check')}<span>Link copiato</span>`;
+    setTimeout(() => {
+      if (btn.isConnected) btn.innerHTML = `${icon('link')}<span>Condividi</span>`;
+    }, 2000);
+  } catch {
+    // Condivisione annullata dall'utente: niente da fare
+  }
+}
+
+// ---------- URL ----------
+
+function syncUrl() {
+  const url = new URL(location.href);
+  if (state.teams.length) url.searchParams.set('squadre', state.teams.map((t) => t.id).join(','));
+  else url.searchParams.delete('squadre');
+  history.replaceState(null, '', url);
+}
+
+function idsFromUrl(): string[] {
+  const raw = new URL(location.href).searchParams.get('squadre') ?? '';
+  return raw.split(',').filter((id) => /^Q\d+$/.test(id));
+}
+
+// ---------- Avvio ----------
+
+renderPicked();
+renderResults();
+
+loadTeams()
+  .then((index) => {
+    state.index = index;
+    const ids = idsFromUrl();
+    if (ids.length) setTeams(ids);
+    else renderPicked();
+    if (matchMedia('(pointer: fine)').matches && !input.disabled) input.focus();
+  })
+  .catch(() => {
+    input.placeholder = 'Elenco squadre non disponibile';
+    help.textContent = 'Non riesco a caricare l’elenco delle squadre. Ricarica la pagina.';
+    help.classList.add('help-error');
+  });

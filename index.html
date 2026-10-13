@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Istinto Puro</title>
+    <meta name="description" content="Scegli due o più squadre di calcio e scopri quali calciatori hanno giocato in tutte." />
+    <meta name="theme-color" content="#f4f6f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c100d" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="preload" href="/teams.json" as="fetch" crossorigin />
+  </head>
+  <body>
+    <div class="app">
+      <section class="panel" aria-labelledby="title">
+        <header class="brand">
+          <h1 id="title" class="wordmark">Istinto <span>Puro</span></h1>
+          <p class="lede">Scegli due o più squadre e scopri chi ha giocato in tutte.</p>
+        </header>
+
+        <div class="field">
+          <label class="label" for="team-input">Squadre</label>
+          <ol id="picked" class="picked" aria-label="Squadre scelte"></ol>
+          <div class="combo">
+            <span class="combo-icon" data-icon="search"></span>
+            <input
+              id="team-input"
+              class="input"
+              type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="team-list"
+              aria-describedby="team-help"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              enterkeyhint="done"
+              placeholder="Carico le squadre..."
+              disabled
+            />
+            <ul id="team-list" class="suggestions" role="listbox" aria-label="Squadre trovate" hidden></ul>
+          </div>
+          <p id="team-help" class="help">Club o nazionali, in qualsiasi lingua. Fino a 6 squadre.</p>
+        </div>
+      </section>
+
+      <main id="results" class="results" aria-live="polite" aria-busy="false"></main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
