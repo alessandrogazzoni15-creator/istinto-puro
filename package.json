@@ -12,6 +12,7 @@
     "teams": "node scripts/build-teams.mjs"
   },
   "devDependencies": {
+    "happy-dom": "^21.0.1",
     "typescript": "^7.0.2",
     "vite": "^7.3.7",
     "vitest": "^3.2.7"

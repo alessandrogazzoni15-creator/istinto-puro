@@ -9,10 +9,12 @@ export interface Team {
   /** Numero di pagine Wikipedia collegate: misura approssimativa di quanto è nota. */
   popularity: number;
   logo: string;
+  /** Altre voci Wikidata della stessa squadra rifondata (es. Vicenza Calcio per L.R. Vicenza). */
+  related: string[];
 }
 
 /** Riga di public/teams.json, vedi scripts/build-teams.mjs. */
-export type TeamRow = [number, string, string, string, 0 | 1, number, string];
+export type TeamRow = [number, string, string, string, 0 | 1, number, string, number[]?];
 
 interface Indexed {
   team: Team;
@@ -26,7 +28,7 @@ export class TeamIndex {
   private byId = new Map<string, Team>();
 
   constructor(rows: TeamRow[]) {
-    this.items = rows.map(([num, name, aliases, country, national, popularity, logo]) => {
+    this.items = rows.map(([num, name, aliases, country, national, popularity, logo, related]) => {
       const team: Team = {
         id: `Q${num}`,
         name,
@@ -35,6 +37,7 @@ export class TeamIndex {
         national: national === 1,
         popularity,
         logo,
+        related: (related ?? []).map((n) => `Q${n}`),
       };
       this.byId.set(team.id, team);
       const variants = [name, ...team.aliases];
@@ -60,7 +63,7 @@ export class TeamIndex {
     const scored: { team: Team; score: number }[] = [];
 
     for (const item of this.items) {
-      if (exclude.has(item.team.id)) continue;
+      if (exclude.has(item.team.id) || item.team.related.some((id) => exclude.has(id))) continue;
       let best = 0;
       for (let i = 0; i < item.keys.length; i++) {
         const key = item.keys[i];
@@ -81,8 +84,23 @@ export class TeamIndex {
     }
 
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, limit).map((s) => s.team);
+    // Una squadra rifondata compare una volta sola: la voce scelta si porta dietro le altre
+    const shown = new Set<string>();
+    const out: Team[] = [];
+    for (const { team } of scored) {
+      if (shown.has(team.id)) continue;
+      shown.add(team.id);
+      team.related.forEach((id) => shown.add(id));
+      out.push(team);
+      if (out.length === limit) break;
+    }
+    return out;
   }
+}
+
+/** Tutte le voci Wikidata che contano come questa squadra. */
+export function teamIds(team: Team): string[] {
+  return [team.id, ...team.related];
 }
 
 export function displayName(team: Team): string {

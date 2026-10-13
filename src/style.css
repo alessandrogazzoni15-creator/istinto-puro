@@ -79,6 +79,10 @@ a {
   flex: none;
 }
 
+.nowrap {
+  white-space: nowrap;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -640,12 +644,33 @@ a {
   border-radius: 7px;
   font-family: var(--mono);
   font-size: 0.8125rem;
-  white-space: nowrap;
+  max-width: 100%;
+}
+
+.spell .years {
+  min-width: 0;
 }
 
 .spell .crest-sm {
   width: 18px;
   height: 18px;
+}
+
+.notice .spells {
+  margin: 4px 0 12px;
+}
+
+.notice .spells:last-child {
+  margin-bottom: 0;
+}
+
+.notice a {
+  font-weight: 600;
+}
+
+.spell-missing {
+  color: var(--danger);
+  font-family: var(--font);
 }
 
 .is-masked .avatar {

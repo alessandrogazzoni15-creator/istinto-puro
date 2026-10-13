@@ -20,18 +20,31 @@ export interface Player {
 const ENDPOINT = 'https://query.wikidata.org/sparql';
 const LOAN = 'Q2914547';
 
-export function buildQuery(teamIds: string[]): string {
-  if (teamIds.length < 2) throw new Error('Servono almeno due squadre');
-  for (const id of teamIds) {
+/**
+ * Ogni squadra scelta è un gruppo di voci Wikidata: la voce principale più eventuali voci
+ * della stessa squadra rifondata. Basta aver giocato in una delle voci del gruppo.
+ */
+export type TeamGroup = string[];
+
+export function buildQuery(groups: TeamGroup[]): string {
+  if (groups.length < 2) throw new Error('Servono almeno due squadre');
+  for (const id of groups.flat()) {
     if (!/^Q\d+$/.test(id)) throw new Error(`ID squadra non valido: ${id}`);
   }
-  const teams = teamIds.map((id) => `wd:${id}`);
+  const membership = groups
+    .map((g, i) =>
+      g.length === 1
+        ? `  ?p wdt:P54 wd:${g[0]} .`
+        : `  ?p wdt:P54 ?g${i} . VALUES ?g${i} { ${g.map((id) => `wd:${id}`).join(' ')} }`,
+    )
+    .join('\n');
+  const all = groups.flat().map((id) => `wd:${id}`);
   return `SELECT ?p ?pLabel ?links (SAMPLE(?img) AS ?image) (MIN(YEAR(?born)) AS ?birth)
   (SAMPLE(?itwiki) AS ?it) (SAMPLE(?enwiki) AS ?en)
   (GROUP_CONCAT(DISTINCT ?spell; separator="|") AS ?spells) WHERE {
-  ?p wdt:P54 ${teams.join(', ')} .
+${membership}
   ?p p:P54 ?st . ?st ps:P54 ?team .
-  VALUES ?team { ${teams.join(' ')} }
+  VALUES ?team { ${all.join(' ')} }
   OPTIONAL { ?st pq:P580 ?start }
   OPTIONAL { ?st pq:P582 ?end }
   OPTIONAL { ?st pq:P1642 ?how }
@@ -53,13 +66,17 @@ interface Binding {
 
 const year = (s: string): number | null => (s ? Number(s) : null);
 
-export function parseSpells(raw: string, teamOrder: string[]): Spell[] {
+/** Le voci secondarie di un gruppo vengono ricondotte alla voce principale (la prima). */
+export function parseSpells(raw: string, groups: TeamGroup[]): Spell[] {
+  const primary = new Map<string, string>();
+  for (const g of groups) for (const id of g) primary.set(id, g[0]);
+  const teamOrder = groups.map((g) => g[0]);
   const spells = raw
     .split('|')
     .filter(Boolean)
     .map((part): Spell => {
-      const [teamId, from, to, loan] = part.split(';');
-      return { teamId, from: year(from), to: year(to), loan: loan === 'L' };
+      const [entity, from, to, loan] = part.split(';');
+      return { teamId: primary.get(entity) ?? entity, from: year(from), to: year(to), loan: loan === 'L' };
     });
   // Stesso ordine delle squadre scelte, poi cronologico
   return spells.sort(
@@ -69,10 +86,10 @@ export function parseSpells(raw: string, teamOrder: string[]): Spell[] {
   );
 }
 
-export function parsePlayers(bindings: Binding[], teamOrder: string[]): Player[] {
+export function parsePlayers(bindings: Binding[], groups: TeamGroup[]): Player[] {
   return bindings.map((b) => {
     const id = b.p!.value.slice(b.p!.value.lastIndexOf('/') + 1);
-    const spells = parseSpells(b.spells?.value ?? '', teamOrder);
+    const spells = parseSpells(b.spells?.value ?? '', groups);
     const years = spells.flatMap((s) => [s.from, s.to]).filter((y): y is number => y !== null);
     const img = b.image?.value ?? '';
     return {
@@ -89,16 +106,16 @@ export function parsePlayers(bindings: Binding[], teamOrder: string[]): Player[]
   });
 }
 
-const CACHE_PREFIX = 'ip:players:v1:';
+const CACHE_PREFIX = 'ip:players:v2:';
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 3;
 
-function cacheKey(teamIds: string[]): string {
-  return CACHE_PREFIX + [...teamIds].sort().join(',');
+function cacheKey(groups: TeamGroup[]): string {
+  return CACHE_PREFIX + groups.map((g) => g.join('+')).sort().join(',');
 }
 
-function readCache(teamIds: string[]): Binding[] | null {
+function readCache(groups: TeamGroup[]): Binding[] | null {
   try {
-    const raw = localStorage.getItem(cacheKey(teamIds));
+    const raw = localStorage.getItem(cacheKey(groups));
     if (!raw) return null;
     const { t, data } = JSON.parse(raw) as { t: number; data: Binding[] };
     return Date.now() - t < CACHE_TTL ? data : null;
@@ -107,9 +124,9 @@ function readCache(teamIds: string[]): Binding[] | null {
   }
 }
 
-function writeCache(teamIds: string[], data: Binding[]): void {
+function writeCache(groups: TeamGroup[], data: Binding[]): void {
   try {
-    localStorage.setItem(cacheKey(teamIds), JSON.stringify({ t: Date.now(), data }));
+    localStorage.setItem(cacheKey(groups), JSON.stringify({ t: Date.now(), data }));
   } catch {
     // Spazio pieno o storage bloccato: si fa senza cache
   }
@@ -126,11 +143,11 @@ export class QueryError extends Error {
   }
 }
 
-export async function findCommonPlayers(teamIds: string[], signal?: AbortSignal): Promise<Player[]> {
-  const cached = readCache(teamIds);
-  if (cached) return parsePlayers(cached, teamIds);
+export async function findCommonPlayers(groups: TeamGroup[], signal?: AbortSignal): Promise<Player[]> {
+  const cached = readCache(groups);
+  if (cached) return parsePlayers(cached, groups);
 
-  const url = `${ENDPOINT}?format=json&query=${encodeURIComponent(buildQuery(teamIds))}`;
+  const url = `${ENDPOINT}?format=json&query=${encodeURIComponent(buildQuery(groups))}`;
   let res: Response;
   try {
     res = await fetch(url, { signal, headers: { Accept: 'application/sparql-results+json' } });
@@ -143,8 +160,8 @@ export async function findCommonPlayers(teamIds: string[], signal?: AbortSignal)
   if (!res.ok) throw new QueryError(`Wikidata ha risposto con errore ${res.status}`, 'server');
 
   const data = (await res.json()) as { results: { bindings: Binding[] } };
-  writeCache(teamIds, data.results.bindings);
-  return parsePlayers(data.results.bindings, teamIds);
+  writeCache(groups, data.results.bindings);
+  return parsePlayers(data.results.bindings, groups);
 }
 
 export type SortMode = 'famous' | 'recent' | 'alpha';

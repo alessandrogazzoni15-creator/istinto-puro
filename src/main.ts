@@ -12,8 +12,9 @@ import {
   type SortMode,
   type Spell,
 } from './players';
-import { displayName, loadTeams, logoUrl, type Team, type TeamIndex } from './teams';
+import { displayName, loadTeams, logoUrl, teamIds, type Team, type TeamIndex } from './teams';
 import { initials, normalize } from './text';
+import { checkOnWikipedia, type WikiCheck } from './wikipedia';
 
 const MAX_TEAMS = 6;
 
@@ -42,6 +43,12 @@ const state = {
   revealed: new Set<string>(),
   /** Animazione d'ingresso solo quando arrivano risultati nuovi. */
   animate: false,
+  /** Controllo di riserva su Wikipedia per un nome che Wikidata non dà. */
+  wiki: { kind: 'idle' } as
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'error' }
+    | { kind: 'done'; result: WikiCheck | null },
 };
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -67,7 +74,9 @@ function crest(team: Team, size: 'sm' | 'md'): string {
 
 function teamMeta(team: Team): string {
   if (team.national) return 'Nazionale';
-  return team.country || 'Club';
+  const base = team.country || 'Club';
+  const others = team.related.map((id) => state.index?.get(id)).filter((t): t is Team => !!t);
+  return others.length ? `${base}, insieme a ${others.map(displayName).join(', ')}` : base;
 }
 
 // ---------- Squadre scelte e suggerimenti ----------
@@ -127,7 +136,7 @@ function renderSuggestions() {
 
 function updateSuggestions() {
   if (!state.index) return;
-  const exclude = new Set(state.teams.map((t) => t.id));
+  const exclude = new Set(state.teams.flatMap(teamIds));
   state.suggestions = state.index.search(input.value, 8, exclude);
   state.active = state.suggestions.length ? 0 : -1;
   renderSuggestions();
@@ -142,7 +151,7 @@ function closeSuggestions() {
 }
 
 function addTeam(team: Team) {
-  if (state.teams.length >= MAX_TEAMS || state.teams.some((t) => t.id === team.id)) return;
+  if (state.teams.length >= MAX_TEAMS || state.teams.some((t) => teamIds(t).includes(team.id))) return;
   state.teams.push(team);
   input.value = '';
   closeSuggestions();
@@ -215,6 +224,7 @@ function teamsChanged() {
   renderPicked();
   syncUrl();
   state.filter = '';
+  state.wiki = { kind: 'idle' };
   state.revealed.clear();
   controller?.abort();
   if (state.teams.length < 2) {
@@ -226,13 +236,13 @@ function teamsChanged() {
 }
 
 async function runSearch() {
-  const ids = state.teams.map((t) => t.id);
+  const groups = state.teams.map(teamIds);
   controller = new AbortController();
   const { signal } = controller;
   state.status = { kind: 'loading' };
   renderResults();
   try {
-    const players = await findCommonPlayers(ids, signal);
+    const players = await findCommonPlayers(groups, signal);
     if (signal.aborted) return;
     state.status = { kind: 'done', players };
     state.animate = true;
@@ -277,8 +287,11 @@ function spellsHtml(p: Player): string {
     .map((t) => {
       const mine = p.spells.filter((s) => s.teamId === t.id);
       if (!mine.length) return '';
-      const text = mine.map((s) => years(s) + (s.loan ? ' (prestito)' : '')).join(', ');
-      return `<li class="spell" title="${esc(displayName(t))}">${crest(t, 'sm')}<span class="sr-only">${esc(displayName(t))}: </span><span class="years">${esc(text)}</span></li>`;
+      // Ogni periodo resta intero; si va a capo solo tra un periodo e l'altro
+      const text = mine
+        .map((s) => `<span class="nowrap">${esc(years(s) + (s.loan ? ' (prestito)' : ''))}</span>`)
+        .join(', ');
+      return `<li class="spell" title="${esc(displayName(t))}">${crest(t, 'sm')}<span class="sr-only">${esc(displayName(t))}: </span><span class="years">${text}</span></li>`;
     })
     .join('');
 }
@@ -413,19 +426,75 @@ function renderList() {
   // In modalità gioco i nomi restano coperti, tranne quelli scoperti o cercati per nome
   const masked = (p: Player) => state.hidden && !state.revealed.has(p.id) && q.length < 3;
 
+  const wiki = state.wiki;
+  const wikiFound = !visible.length && wiki.kind === 'done' && wiki.result;
+  const wikiYes = wikiFound && wiki.result!.perTeam.every((t) => t.years.length > 0);
+
   const verdict =
     state.hidden && q.length >= 3
-      ? visible.length
-        ? `<p class="verdict verdict-yes">${icon('check')}Risposta valida</p>`
+      ? visible.length || wikiYes
+        ? `<p class="verdict verdict-yes">${icon('check')}${visible.length ? 'Risposta valida' : 'Valida secondo Wikipedia'}</p>`
         : `<p class="verdict verdict-no">${icon('x')}Non risulta</p>`
       : '';
 
   const body = visible.length
     ? `<ul class="players${state.animate ? ' animate' : ''}">${visible.map((p) => playerHtml(p, masked(p))).join('')}</ul>`
-    : `<div class="notice"><p>Nessun giocatore valido si chiama “${esc(state.filter.trim())}”.</p></div>`;
+    : q.length >= 3
+      ? wikiHtml()
+      : `<div class="notice"><p>Nessun giocatore valido si chiama “${esc(state.filter.trim())}”.</p></div>`;
   state.animate = false;
 
   area.innerHTML = verdict + body;
+}
+
+function wikiHtml(): string {
+  const typed = esc(state.filter.trim());
+  const wiki = state.wiki;
+  if (wiki.kind === 'idle') {
+    return `<div class="notice">
+      <p>“${typed}” non è nell’elenco. Wikidata però a volte non ha tutta la carriera di un giocatore.</p>
+      <button type="button" class="btn" data-wiki>${icon('search')}Controlla su Wikipedia</button>
+    </div>`;
+  }
+  if (wiki.kind === 'loading') {
+    return `<div class="notice"><p class="muted">Controllo la carriera su Wikipedia...</p></div>`;
+  }
+  if (wiki.kind === 'error') {
+    return `<div class="notice notice-error"><p>Wikipedia non ha risposto.</p>
+      <button type="button" class="btn" data-wiki>${icon('retry')}Riprova</button></div>`;
+  }
+  const r = wiki.result;
+  if (!r) return `<div class="notice"><p>Su Wikipedia non trovo un calciatore che si chiama “${typed}”.</p></div>`;
+
+  const name = `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>`;
+  const line = (t: { teamId: string; years: string[] }) => {
+    const team = state.teams.find((x) => x.id === t.teamId)!;
+    return t.years.length
+      ? `<li class="spell">${crest(team, 'sm')}<span class="years">${esc(displayName(team))} ${esc(t.years.join(', '))}</span></li>`
+      : `<li class="spell spell-missing">${crest(team, 'sm')}<span class="years">mai in ${esc(displayName(team))}</span></li>`;
+  };
+  const all = r.perTeam.every((t) => t.years.length > 0);
+  return `<div class="notice">
+    <p>${all ? `Secondo Wikipedia ${name} ha giocato in tutte le squadre:` : `Secondo Wikipedia ${name} non ha giocato in tutte le squadre:`}</p>
+    <ul class="spells">${r.perTeam.map(line).join('')}</ul>
+    ${all ? '<p class="muted">Su Wikidata questo periodo manca, per questo non era nell’elenco.</p>' : ''}
+  </div>`;
+}
+
+async function runWikiCheck() {
+  const name = state.filter.trim();
+  const groups = state.teams.map(teamIds);
+  state.wiki = { kind: 'loading' };
+  renderList();
+  try {
+    const result = await checkOnWikipedia(name, groups);
+    if (state.filter.trim() !== name) return; // nel frattempo si è scritto altro
+    state.wiki = { kind: 'done', result };
+  } catch {
+    if (state.filter.trim() !== name) return;
+    state.wiki = { kind: 'error' };
+  }
+  renderList();
 }
 
 results.addEventListener('click', (e) => {
@@ -450,6 +519,7 @@ results.addEventListener('click', (e) => {
     results.querySelector<HTMLElement>(`[data-player="${reveal.dataset.reveal}"] .name`)?.focus();
     return;
   }
+  if (t.closest('[data-wiki]')) return runWikiCheck();
   const share = t.closest<HTMLElement>('[data-share]');
   if (share) shareLink(share);
 });
@@ -458,7 +528,15 @@ results.addEventListener('input', (e) => {
   const t = e.target as HTMLInputElement;
   if (t.id !== 'filter') return;
   state.filter = t.value;
+  state.wiki = { kind: 'idle' };
   renderList();
+});
+
+// Invio nel campo nome: se non è nell'elenco, controlla direttamente su Wikipedia
+results.addEventListener('keydown', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.id !== 'filter' || e.key !== 'Enter') return;
+  if (results.querySelector('[data-wiki]')) runWikiCheck();
 });
 
 function renderAndKeepFocus(selector: string) {

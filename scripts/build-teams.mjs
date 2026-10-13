@@ -86,11 +86,65 @@ SELECT ?t ?it ?en ?alias ?country ?logo WHERE {
   await sleep(1500);
 }
 
+// Squadre rifondate (es. Vicenza Calcio -> L.R. Vicenza): su Wikidata sono voci separate e i
+// giocatori sono divisi tra le due. Si uniscono solo coppie che si citano a vicenda come
+// predecessore/successore (P1365/P1366) e che hanno una parola del nome in comune: così i
+// passaggi di titolo tra club diversi (Bassano Virtus -> L.R. Vicenza) restano separati.
+console.log('Squadre rifondate...');
+const lineage = await sparql(`
+SELECT ?a ?b WHERE {
+  VALUES ?type { wd:Q476028 wd:Q103229495 }
+  ?a wdt:P31 ?type ; wdt:P1366 ?b .
+  ?b wdt:P1365 ?a .
+}`);
+
+const STOP = new Set(('calcio football futbol fussball club fc ac as us ss ssc asd ssd sc cf afc cd sd ud sk fk nk ' +
+  'associazione societa sportiva sportivo unione polisportiva dilettantistica calcistica city citta team soccer ' +
+  'de di del della la il le los las el sporting athletic atletico real virtus').split(' '));
+const words = (t) => new Set(
+  `${t.it} ${t.en}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z]+/).filter((w) => w.length > 2 && !STOP.has(w)),
+);
+
+const parent = new Map();
+const find = (x) => {
+  while (parent.has(x) && parent.get(x) !== x) x = parent.get(x);
+  return x;
+};
+// Fusioni tra club diversi che Wikidata registra come predecessore/successore
+const NOT_SAME_CLUB = new Set(['Q483020', 'Q216032']); // Paris Saint-Germain, KRC Genk
+let merged = 0;
+for (const r of lineage) {
+  const a = teams.get(qid(r.a.value));
+  const b = teams.get(qid(r.b.value));
+  if (!a || !b || a.national || b.national) continue;
+  if (NOT_SAME_CLUB.has(a.id) || NOT_SAME_CLUB.has(b.id)) continue;
+  const wa = words(a);
+  if (![...words(b)].some((w) => wa.has(w))) continue;
+  for (const id of [a.id, b.id]) if (!parent.has(id)) parent.set(id, id);
+  const ra = find(a.id), rb = find(b.id);
+  if (ra !== rb) {
+    parent.set(rb, ra);
+    merged++;
+  }
+}
+const groups = new Map();
+for (const id of parent.keys()) {
+  const root = find(id);
+  if (!groups.has(root)) groups.set(root, []);
+  groups.get(root).push(id);
+}
+for (const members of groups.values()) {
+  for (const id of members) teams.get(id).related = members.filter((m) => m !== id);
+}
+console.log(`  ${merged} unioni in ${groups.size} gruppi`);
+
 // Stessa normalizzazione di src/text.ts: alias che differiscono solo per punti o accenti sono doppioni
 const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
 const MAX_ALIASES = 8;
 
-// Formato compatto: [id numerico, nome, alias separati da "|", paese, nazionale 0/1, popolarità, stemma]
+// Formato compatto: [id numerico, nome, alias separati da "|", paese, nazionale 0/1, popolarità, stemma,
+// (facoltativo) id numerici delle altre voci della stessa squadra rifondata]
 const out = [...teams.values()]
   .filter((t) => t.it || t.en)
   .sort((a, b) => b.links - a.links)
@@ -106,7 +160,9 @@ const out = [...teams.values()]
       aliases.push(a);
       if (aliases.length === MAX_ALIASES) break;
     }
-    return [Number(t.id.slice(1)), name, aliases.join('|'), t.country, t.national ? 1 : 0, t.links, t.logo];
+    const row = [Number(t.id.slice(1)), name, aliases.join('|'), t.country, t.national ? 1 : 0, t.links, t.logo];
+    if (t.related?.length) row.push(t.related.map((id) => Number(id.slice(1))));
+    return row;
   });
 
 await writeFile(new URL('../public/teams.json', import.meta.url), JSON.stringify(out));

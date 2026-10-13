@@ -3,21 +3,32 @@ import { buildQuery, parsePlayers, parseSpells, sortPlayers } from './players';
 
 describe('query', () => {
   it('chiede i giocatori di tutte le squadre', () => {
-    const q = buildQuery(['Q1422', 'Q2641', 'Q676899']);
-    expect(q).toContain('wdt:P54 wd:Q1422, wd:Q2641, wd:Q676899');
+    const q = buildQuery([['Q1422'], ['Q2641'], ['Q676899']]);
+    expect(q).toContain('?p wdt:P54 wd:Q1422 .');
+    expect(q).toContain('?p wdt:P54 wd:Q676899 .');
+  });
+
+  it('per una squadra rifondata accetta una qualsiasi delle sue voci', () => {
+    const q = buildQuery([['Q56542463', 'Q8643'], ['Q2768']]);
+    expect(q).toContain('VALUES ?g0 { wd:Q56542463 wd:Q8643 }');
   });
 
   it('rifiuta meno di due squadre e ID non validi', () => {
-    expect(() => buildQuery(['Q1422'])).toThrow();
-    expect(() => buildQuery(['Q1422', 'Q1 } DROP'])).toThrow();
+    expect(() => buildQuery([['Q1422']])).toThrow();
+    expect(() => buildQuery([['Q1422'], ['Q1 } DROP']])).toThrow();
   });
 });
 
 describe('lettura risultati', () => {
   it('ordina i periodi per squadra scelta e poi per anno', () => {
-    const spells = parseSpells('Q1422;2009;2010;|Q2641;1992;1995;|Q1422;2004;2006;|Q2641;;;L', ['Q2641', 'Q1422']);
+    const spells = parseSpells('Q1422;2009;2010;|Q2641;1992;1995;|Q1422;2004;2006;|Q2641;;;L', [['Q2641'], ['Q1422']]);
     expect(spells.map((s) => `${s.teamId}:${s.from}`)).toEqual(['Q2641:1992', 'Q2641:null', 'Q1422:2004', 'Q1422:2009']);
     expect(spells[1].loan).toBe(true);
+  });
+
+  it('riconduce le voci secondarie alla squadra scelta', () => {
+    const spells = parseSpells('Q8643;1990;1995;|Q2768;2000;2001;', [['Q56542463', 'Q8643'], ['Q2768']]);
+    expect(spells[0].teamId).toBe('Q56542463');
   });
 
   const bindings = [
@@ -39,7 +50,7 @@ describe('lettura risultati', () => {
   ];
 
   it('estrae nome, foto, link e ultimo anno', () => {
-    const [z, a] = parsePlayers(bindings, ['Q1422', 'Q2641']);
+    const [z, a] = parsePlayers(bindings, [['Q1422'], ['Q2641']]);
     expect(z.url).toBe('https://www.wikidata.org/wiki/Q1');
     expect(z.lastYear).toBe(2003);
     expect(a.image).toBe('Alfa Rossi.jpg');
@@ -48,7 +59,7 @@ describe('lettura risultati', () => {
   });
 
   it('ordina per notorietà, anno o nome', () => {
-    const players = parsePlayers(bindings, ['Q1422', 'Q2641']);
+    const players = parsePlayers(bindings, [['Q1422'], ['Q2641']]);
     expect(sortPlayers(players, 'famous')[0].name).toBe('Alfa');
     expect(sortPlayers(players, 'recent')[0].name).toBe('Zeta');
     expect(sortPlayers(players, 'alpha')[0].name).toBe('Alfa');
