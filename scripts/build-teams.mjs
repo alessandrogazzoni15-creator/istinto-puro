@@ -60,7 +60,25 @@ for (const b of base) {
     it: '', en: '', aliases: new Set(), country: '', logo: '', itwiki: '',
   });
 }
-console.log(`  ${teams.size} squadre`);
+// Polisportive registrate solo come "società sportiva" (es. Boca Juniors, San Lorenzo):
+// entrano se ci hanno giocato almeno 15 calciatori
+const multi = await sparql(`
+SELECT ?t (SAMPLE(?l) AS ?links) (COUNT(DISTINCT ?p) AS ?n) WHERE {
+  ?t wdt:P31 wd:Q847017 ; wikibase:sitelinks ?l . FILTER(?l >= ${MIN_SITELINKS})
+  FILTER NOT EXISTS { ?t wdt:P31 wd:Q476028 }
+  ?st ps:P54 ?t . ?p p:P54 ?st ; wdt:P106 wd:Q937857 .
+} GROUP BY ?t HAVING(?n >= 15)`);
+for (const b of multi) {
+  const id = qid(b.t.value);
+  if (teams.has(id)) continue;
+  teams.set(id, {
+    id,
+    links: Number(b.links.value),
+    national: false,
+    it: '', en: '', aliases: new Set(), country: '', logo: '', itwiki: '',
+  });
+}
+console.log(`  ${teams.size} squadre (di cui ${multi.length} polisportive)`);
 
 const ids = [...teams.keys()];
 for (let i = 0; i < ids.length; i += BATCH) {
@@ -83,7 +101,7 @@ SELECT ?t ?it ?en ?alias ?country ?logo ?itwiki WHERE {
     if (r.alias) t.aliases.add(r.alias.value);
     if (r.country && !t.country) t.country = r.country.value;
     if (r.logo && !t.logo) t.logo = decodeURIComponent(qid(r.logo.value));
-    if (r.itwiki) t.itwiki = decodeURIComponent(qid(r.itwiki.value)).replace(/_/g, ' ');
+    if (r.itwiki) t.itwiki = decodeURIComponent(r.itwiki.value.split('/wiki/')[1]).replace(/_/g, ' ');
   }
   await sleep(1500);
 }

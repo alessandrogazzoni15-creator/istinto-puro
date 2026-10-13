@@ -15,6 +15,7 @@ import {
 import { displayName, loadTeams, logoUrl, teamIds, type Team, type TeamIndex } from './teams';
 import { initials, normalize } from './text';
 import { enrichFromWikipedia, type EnrichProgress } from './enrich';
+import { archiveInfo, findInArchive } from './rosters';
 import { checkOnWikipedia, type WikiCheck } from './wikipedia';
 
 const MAX_TEAMS = 6;
@@ -245,8 +246,11 @@ async function runSearch() {
   const { signal } = controller;
   state.status = { kind: 'loading' };
   renderResults();
+  // Con l'archivio precalcolato l'incrocio si fa qui, subito, e Wikipedia è già inclusa.
+  // Senza (es. in sviluppo prima di generarlo) si interroga Wikidata e poi Wikipedia dal vivo.
+  const archive = await archiveInfo();
   try {
-    const players = await findCommonPlayers(groups, signal);
+    const players = archive ? await findInArchive(groups) : await findCommonPlayers(groups, signal);
     if (signal.aborted) return;
     state.status = { kind: 'done', players };
     state.animate = true;
@@ -255,7 +259,7 @@ async function runSearch() {
     state.status = { kind: 'error', message: errorMessage(err) };
   }
   renderResults();
-  if (state.status.kind === 'done') runEnrich(state.status.players, signal);
+  if (state.status.kind === 'done' && !archive) runEnrich(state.status.players, signal);
 }
 
 async function runEnrich(players: Player[], signal: AbortSignal) {
@@ -320,6 +324,9 @@ function renderExtra() {
   } else if (x.kind === 'done' && x.progress.found.length) {
     const n = x.progress.found.length;
     text = `${n} ${n === 1 ? 'giocatore aggiunto' : 'giocatori aggiunti'} da Wikipedia, dove la loro carriera è più completa.`;
+  } else if (x.kind === 'idle' && state.status.kind === 'done') {
+    const n = state.status.players.filter((p) => p.fromWikipedia).length;
+    if (n) text = `${n} ${n === 1 ? 'giocatore viene' : 'giocatori vengono'} da Wikipedia, dove la loro carriera è più completa che su Wikidata.`;
   } else if (x.kind === 'error') {
     text = 'Il controllo su Wikipedia non è riuscito: l’elenco contiene solo i dati di Wikidata.';
   }
@@ -329,6 +336,15 @@ function renderExtra() {
   line.textContent = text;
   line.hidden = !text;
   line.classList.toggle('is-running', x.kind === 'running');
+
+  const updated = results.querySelector<HTMLElement>('#updated');
+  if (updated) {
+    archiveInfo().then((a) => {
+      if (!a) return;
+      const [y, m, d] = a.updated.split('-');
+      updated.textContent = ` Aggiornati al ${Number(d)}/${Number(m)}/${y}.`;
+    });
+  }
 }
 
 function errorMessage(err: unknown): string {
@@ -482,7 +498,7 @@ function renderResults() {
     </div>
     <p id="extra-status" class="extra-status" hidden></p>
     <div id="list-area"></div>
-    <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> e <a href="https://it.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>. Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
+    <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> e <a href="https://it.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>.<span id="updated"></span> Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
   renderList();
   renderExtra();
 }

@@ -9,7 +9,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "teams": "node scripts/build-teams.mjs"
+    "teams": "node scripts/build-teams.mjs",
+    "rosters": "node scripts/build-rosters.mjs",
+    "careers": "node scripts/build-wiki-careers.mjs"
   },
   "devDependencies": {
     "happy-dom": "^21.0.1",
