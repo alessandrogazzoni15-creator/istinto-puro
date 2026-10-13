@@ -14,7 +14,7 @@ const files: Record<string, unknown> = {
 vi.stubGlobal('fetch', async (url: string) => {
   const name = url.slice(url.lastIndexOf('/') + 1);
   return name in files
-    ? new Response(JSON.stringify(files[name]), { status: 200 })
+    ? new Response(JSON.stringify(files[name]), { status: 200, headers: { 'content-type': 'application/json' } })
     : new Response('', { status: 404 });
 });
 afterEach(() => vi.clearAllMocks());

@@ -16,6 +16,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(params, attempt = 1) {
   const url = `${API}?${new URLSearchParams({ ...params, format: 'json', formatversion: '2', maxlag: '5' })}`;
+  // Ritmo gentile: Wikipedia limita chi fa troppe richieste ravvicinate
+  await sleep(250);
+  let wait = attempt * 5000;
   try {
     const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(60_000) });
     if (res.ok) {
@@ -24,10 +27,15 @@ async function api(params, attempt = 1) {
       if (data.error) throw new Error(data.error.info);
       return data;
     }
+    if (res.status === 429) {
+      // Si aspetta quanto chiede Wikipedia, o sempre di più fino a qualche minuto
+      wait = (Number(res.headers.get('retry-after')) || 0) * 1000 || Math.min(attempt * 30_000, 300_000);
+    }
     throw new Error(`HTTP ${res.status}`);
   } catch (err) {
-    if (attempt >= 8) throw err;
-    await sleep(attempt * 5000);
+    if (attempt >= 12) throw err;
+    console.warn(`  ${err.message}, riprovo tra ${Math.round(wait / 1000)}s`);
+    await sleep(wait);
     return api(params, attempt + 1);
   }
 }
@@ -190,7 +198,10 @@ while (!state.done) {
     const raw = parseCareerWikitext(text).map((r) => [r.link ? `[[${r.link}` : r.short, r.years, r.loan ? 1 : 0]);
     if (raw.length === 0) continue;
     const born = /\|\s*AnnoNascita\s*=\s*(\d{4})/.exec(text);
-    state.careers[player] = { t: page.title, b: born ? Number(born[1]) : null, raw };
+    // Le calciatrici usano gli stessi nomi brevi ("Juventus") per le squadre femminili:
+    // l'indice è delle squadre maschili, quindi le loro carriere si tengono fuori
+    const female = /\|\s*Sesso\s*=\s*F\b/.test(text);
+    state.careers[player] = { t: page.title, b: born ? Number(born[1]) : null, raw, ...(female ? { f: 1 } : {}) };
   }
   state.pages += data.query?.pages?.length ?? 0;
   // Con prop=revisions la risposta può arrivare a metà: si continua finché il generatore non è finito
@@ -206,6 +217,7 @@ await save();
 // ---------- Corrispondenza con le squadre dell'indice ----------
 const careers = {};
 for (const [player, c] of Object.entries(state.careers)) {
+  if (c.f) continue;
   const rows = [];
   for (const [name, years, loan] of c.raw) {
     const team = name.startsWith('[[') ? titleToTeam.get(name.slice(2)) : shortToTeam.get(name);

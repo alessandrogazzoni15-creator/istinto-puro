@@ -30,7 +30,8 @@ function roster(id: string): Promise<RosterRow[]> {
   let p = rosters.get(id);
   if (!p) {
     p = fetch(`${BASE}${id}.json`).then((r) => {
-      if (r.status === 404) return []; // squadra senza giocatori noti
+      // Squadra senza giocatori noti: 404, oppure (server di sviluppo) la pagina dell'app al posto del file
+      if (r.status === 404 || !(r.headers.get('content-type') ?? '').includes('json')) return [];
       if (!r.ok) throw new Error(`Archivio HTTP ${r.status}`);
       return r.json() as Promise<RosterRow[]>;
     });

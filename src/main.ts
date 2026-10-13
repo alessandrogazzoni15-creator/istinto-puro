@@ -373,7 +373,7 @@ function teamList(teams: Team[]): string {
 function years(s: Spell): string {
   if (s.from === null && s.to === null) return 'anni n.d.';
   if (s.from !== null && s.from === s.to) return String(s.from);
-  return `${s.from ?? '?'}-${s.to ?? 'oggi'}`;
+  return `${s.from ?? '?'}-${s.to ?? ''}`;
 }
 
 function spellsHtml(p: Player): string {
