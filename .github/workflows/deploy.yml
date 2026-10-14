@@ -1,14 +1,25 @@
 name: Dati e pubblicazione
 
+# Pubblicazione normale (push): usa l'archivio dei dati già pronto, salvato nella release
+# "dati", e va online in pochi minuti.
+# Ogni lunedì (o a mano con "aggiorna i dati"): rigenera indice, carriere e archivio da
+# Wikidata e Wikipedia; solo se tutto va a buon fine aggiorna la release e il sito.
+# Se qualcosa fallisce, online resta la versione precedente.
+
 on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 3 * * 1' # ogni lunedì alle 3 (UTC): dati aggiornati da Wikidata e Wikipedia
+    - cron: '0 3 * * 1'
   workflow_dispatch:
+    inputs:
+      refresh:
+        description: 'Aggiorna i dati da Wikidata e Wikipedia (circa 2 ore)'
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -19,7 +30,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 330
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFRESH: ${{ github.event_name == 'schedule' || inputs.refresh == true }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,28 +46,19 @@ jobs:
 
       - run: npm test
 
-      # I dati scaricati restano in cache per la settimana: un push nei giorni successivi
-      # ripubblica subito; il lunedì la chiave cambia e si riscarica tutto da capo.
-      - name: Settimana corrente
-        id: week
-        run: echo "key=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Dati dall'archivio
+        if: env.REFRESH != 'true'
+        run: |
+          gh release download dati --pattern dati.tar.gz
+          tar -xzf dati.tar.gz -C public
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            scripts/.cache
-            public/rosters
-          key: data-${{ steps.week.outputs.key }}
-
-      - name: Indice delle squadre
-        if: github.event_name != 'push'
-        run: npm run teams
-
-      - name: Carriere da Wikipedia
-        run: npm run careers
-
-      - name: Archivio delle rose
-        run: npm run rosters
+      - name: Dati aggiornati
+        if: env.REFRESH == 'true'
+        run: |
+          npm run teams
+          npm run careers
+          npm run rosters
+          tar -czf dati.tar.gz -C public rosters teams.json
 
       - name: Sito
         run: npm run build
@@ -63,6 +68,11 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+      # Solo dopo una build riuscita: la release "dati" viene sostituita dai dati nuovi
+      - name: Salva i dati aggiornati
+        if: env.REFRESH == 'true'
+        run: gh release upload dati dati.tar.gz --clobber
 
   deploy:
     needs: build
