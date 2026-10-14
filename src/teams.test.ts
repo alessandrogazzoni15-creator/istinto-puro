@@ -29,6 +29,12 @@ describe('ricerca squadre', () => {
     expect(displayName(index.get('Q676899')!)).toBe('Italia');
   });
 
+  it('mostra il nome con cui la chiamano i tifosi', () => {
+    expect(displayName(index.get('Q11938')!)).toBe('PSV');
+    expect(displayName(index.get('Q7156')!)).toBe('Barcellona');
+    expect(first('psv')).toBe('Q11938');
+  });
+
   it('non propone squadre già scelte', () => {
     const ids = index.search('juventus', 8, new Set(['Q1422'])).map((t) => t.id);
     expect(ids).not.toContain('Q1422');

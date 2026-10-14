@@ -164,7 +164,8 @@ const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').rep
 const MAX_ALIASES = 8;
 
 // Formato compatto: [id numerico, nome, alias separati da "|", paese, nazionale 0/1, popolarità, stemma,
-// titolo della voce su it.wikipedia, (facoltativo) id numerici delle altre voci della stessa squadra rifondata]
+// titolo della voce su it.wikipedia, nome comune (lo aggiunge build-wiki-careers.mjs),
+// (facoltativo) id numerici delle altre voci della stessa squadra rifondata]
 const out = [...teams.values()]
   .filter((t) => t.it || t.en)
   .sort((a, b) => b.links - a.links)
@@ -180,7 +181,7 @@ const out = [...teams.values()]
       aliases.push(a);
       if (aliases.length === MAX_ALIASES) break;
     }
-    const row = [Number(t.id.slice(1)), name, aliases.join('|'), t.country, t.national ? 1 : 0, t.links, t.logo, t.itwiki];
+    const row = [Number(t.id.slice(1)), name, aliases.join('|'), t.country, t.national ? 1 : 0, t.links, t.logo, t.itwiki, ''];
     if (t.related?.length) row.push(t.related.map((id) => Number(id.slice(1))));
     return row;
   });

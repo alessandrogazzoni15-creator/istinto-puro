@@ -13,10 +13,12 @@ export interface Team {
   related: string[];
   /** Titolo della voce su it.wikipedia, vuoto se non c'è. */
   itwiki: string;
+  /** Nome con cui la chiamano i tifosi ("PSV"), dalle carriere di Wikipedia; vuoto se coincide col nome. */
+  short: string;
 }
 
 /** Riga di public/teams.json, vedi scripts/build-teams.mjs. */
-export type TeamRow = [number, string, string, string, 0 | 1, number, string, string, number[]?];
+export type TeamRow = [number, string, string, string, 0 | 1, number, string, string, string?, number[]?];
 
 interface Indexed {
   team: Team;
@@ -30,7 +32,7 @@ export class TeamIndex {
   private byId = new Map<string, Team>();
 
   constructor(rows: TeamRow[]) {
-    this.items = rows.map(([num, name, aliases, country, national, popularity, logo, itwiki, related]) => {
+    this.items = rows.map(([num, name, aliases, country, national, popularity, logo, itwiki, short, related]) => {
       const team: Team = {
         id: `Q${num}`,
         name,
@@ -41,9 +43,11 @@ export class TeamIndex {
         logo,
         related: (related ?? []).map((n) => `Q${n}`),
         itwiki: itwiki ?? '',
+        short: short ?? '',
       };
       this.byId.set(team.id, team);
       const variants = [name, ...team.aliases];
+      if (team.short) variants.push(team.short);
       // Per le nazionali si scrive il paese ("Italia"), non "nazionale di calcio dell'Italia"
       if (team.national && country) variants.push(country);
       const keys = variants.map(normalize);
@@ -120,9 +124,8 @@ export function teamIds(team: Team): string[] {
 }
 
 export function displayName(team: Team): string {
-  return team.national && team.country && /^nazionale di calcio/i.test(team.name)
-    ? team.country
-    : team.name;
+  if (team.national && team.country && /^nazionale di calcio/i.test(team.name)) return team.country;
+  return team.short || team.name;
 }
 
 export function logoUrl(file: string, width = 64): string {

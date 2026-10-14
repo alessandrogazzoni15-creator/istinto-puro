@@ -216,6 +216,7 @@ await save();
 
 // ---------- Corrispondenza con le squadre dell'indice ----------
 const careers = {};
+const usage = new Map(); // squadra -> (nome breve -> quante carriere lo usano)
 for (const [player, c] of Object.entries(state.careers)) {
   if (c.f) continue;
   const rows = [];
@@ -225,12 +226,39 @@ for (const [player, c] of Object.entries(state.careers)) {
       if (!name.startsWith('[[')) unmapped.set(name, (unmapped.get(name) ?? 0) + 1);
       continue;
     }
+    if (!name.startsWith('[[')) {
+      if (!usage.has(team)) usage.set(team, new Map());
+      usage.get(team).set(name, (usage.get(team).get(name) ?? 0) + 1);
+    }
     const [from, to] = parseYears(years);
     rows.push(loan ? [team, from, to, 1] : [team, from, to]);
   }
   if (rows.length) careers[player] = { t: c.t, b: c.b, r: rows };
 }
 await writeFile(OUT, JSON.stringify(careers));
+
+// ---------- Nome comune delle squadre ----------
+// Il nome breve più usato nelle carriere di Wikipedia è quello che dicono i tifosi
+// ("PSV" e non "Philips Sport Vereniging"): finisce in teams.json, nella posizione 8.
+const TEAMS = new URL('public/teams.json', ROOT);
+const rowsIdx = JSON.parse(await readFile(TEAMS, 'utf8'));
+let named = 0;
+for (const row of rowsIdx) {
+  const related = Array.isArray(row[8]) ? row[8] : Array.isArray(row[9]) ? row[9] : null;
+  const counts = usage.get(`Q${row[0]}`);
+  let short = '';
+  if (counts) {
+    // Almeno 3 carriere, per non prendere un nome usato per sbaglio
+    const [best, n] = [...counts].sort((a, b) => b[1] - a[1])[0];
+    if (n >= 3 && best !== row[1]) short = best;
+  }
+  row.length = 8;
+  row.push(short);
+  if (related) row.push(related);
+  if (short) named++;
+}
+await writeFile(TEAMS, JSON.stringify(rowsIdx));
+console.log(`Nome comune per ${named} squadre`);
 const top = [...unmapped].sort((a, b) => b[1] - a[1]).slice(0, 15);
 console.log(`\nFatto: ${Object.keys(careers).length} calciatori in scripts/.cache/wiki-careers.json`);
 console.log('Nomi brevi non riconosciuti più frequenti:', top.map(([n, c]) => `${n} (${c})`).join(', '));
