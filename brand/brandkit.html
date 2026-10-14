@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Istinto Puro, brand identity</title>
+<style>
+  @font-face { font-family: 'Chakra Petch'; font-style: italic; font-weight: 700; src: url('../node_modules/@fontsource/chakra-petch/files/chakra-petch-latin-700-italic.woff2') format('woff2'); }
+  @font-face { font-family: 'Chakra Petch'; font-style: normal; font-weight: 600; src: url('../node_modules/@fontsource/chakra-petch/files/chakra-petch-latin-600-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'Geist'; font-weight: 100 900; src: url('../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2') format('woff2-variations'); }
+
+  :root {
+    --night: #060b08; --turf: #132019; --turf-2: #0d1510; --line: #1d2b22; --line-2: #2a3d31;
+    --chalk: #eef6f0; --muted: #8ea395; --neon: #3be36f; --red: #ff6b6b;
+    --cut: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1600px; height: 1200px; background: #0a0f0c; }
+  body { font-family: 'Geist', sans-serif; color: var(--chalk); padding: 28px; }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 16px; width: 100%; height: 100%; }
+  .panel {
+    position: relative; overflow: hidden; background: var(--night); border: 1px solid var(--line);
+    clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+    padding: 28px;
+  }
+  .label { position: absolute; left: 28px; bottom: 22px; font-size: 13px; color: var(--muted); }
+  .display { font-family: 'Chakra Petch'; font-style: italic; font-weight: 700; text-transform: uppercase; line-height: .92; }
+  .caps { font-family: 'Chakra Petch'; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .neon { color: var(--neon); }
+  .glow { background: radial-gradient(90% 70% at 50% -10%, rgb(59 227 111 / .2), transparent 65%), var(--night); }
+
+  /* 1 Marchio */
+  .cover { display: grid; place-items: center; }
+  .cover .lockup { display: grid; justify-items: center; gap: 18px; margin-top: -10px; }
+  .cover img { width: 170px; }
+  .cover .display { font-size: 52px; }
+  .speed { position: absolute; inset: 0; background: repeating-linear-gradient(180deg, transparent 0 7px, rgb(59 227 111 / .1) 7px 8px); mask-image: linear-gradient(90deg, transparent, #000 30%, #000 50%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 30%, #000 50%, transparent); transform: skewX(-12deg); }
+
+  /* 2 Costruzione */
+  .construct svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .construct text { font-family: 'Geist'; font-size: 12px; fill: var(--muted); }
+  .construct .hl { fill: var(--neon); }
+
+  /* 3 App */
+  .app { display: grid; place-items: end center; padding-bottom: 0; }
+  .phone { width: 300px; height: 330px; border: 2px solid var(--line-2); border-bottom: 0; border-radius: 38px 38px 0 0; padding: 22px 20px 0; background: radial-gradient(120% 50% at 50% 0%, rgb(59 227 111 / .14), transparent 60%), var(--night); }
+  .phone .wm { font-size: 22px; margin-bottom: 18px; }
+  .phone .score { display: flex; align-items: baseline; gap: 10px; }
+  .phone .num { font-size: 72px; color: var(--neon); }
+  .phone .lbl { font-size: 12px; }
+  .phone .match { margin: 8px 0 16px; font-size: 11px; color: var(--muted); }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border: 1px solid var(--line); clip-path: polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+  .tabs span { text-align: center; padding: 9px 0; font-size: 12px; color: var(--muted); }
+  .tabs .on { background: var(--neon); color: #04140a; clip-path: polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px); }
+  .guess { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 10px; }
+  .guess .in { height: 40px; border: 1px solid var(--neon); padding: 11px 12px; font-size: 13px; color: var(--muted); clip-path: polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+  .btn { background: var(--neon); color: #04140a; padding: 11px 16px; font-size: 13px; clip-path: polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+
+  /* 4 Motto */
+  .motto { display: flex; flex-direction: column; justify-content: center; }
+  .motto .display { font-size: 74px; }
+
+  /* 5 Colori */
+  .colors { display: grid; grid-template-columns: 1.4fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; padding-bottom: 54px; }
+  .sw { padding: 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; font-size: 13px; clip-path: polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); }
+  .sw b { font-family: 'Chakra Petch'; font-weight: 600; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; }
+  .sw.big { grid-row: span 2; background: var(--neon); color: #04140a; }
+  .sw.night { background: #000; border: 1px solid var(--line-2); }
+  .sw.turf { background: var(--turf); }
+  .sw.chalk { background: var(--chalk); color: var(--night); }
+  .sw.red { background: var(--red); color: #2a0606; }
+
+  /* 6 Caratteri */
+  .type .aa { font-size: 150px; line-height: .85; color: var(--neon); text-transform: none; }
+  .type .row { margin-top: 14px; font-size: 20px; letter-spacing: .04em; }
+  .type .pair { position: absolute; right: 28px; top: 34px; text-align: right; font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .type .pair b { color: var(--chalk); font-weight: 600; }
+  .type .body { margin-top: 10px; font-size: 17px; color: var(--muted); max-width: 30ch; }
+
+  /* 7 Biglietto */
+  .ticketwrap { display: grid; place-items: center; background: #0b120e; }
+  .ticket { position: relative; width: 400px; height: 190px; display: grid; grid-template-columns: 1fr 112px; background: var(--chalk); color: var(--night); transform: rotate(-6deg); box-shadow: 0 30px 50px -20px #000; clip-path: polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px); }
+  .ticket .main { padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; }
+  .ticket .main .display { font-size: 30px; }
+  .ticket .meta { display: flex; gap: 22px; font-size: 11px; }
+  .ticket .meta b { display: block; font-family: 'Chakra Petch'; font-size: 18px; font-weight: 600; }
+  .ticket .stub { background: var(--night); display: grid; place-items: center; border-left: 3px dashed #c9d4cc; }
+  .ticket .stub img { width: 74px; }
+
+  /* 8 Immagine */
+  .pitch { background: radial-gradient(70% 60% at 50% 50%, rgb(59 227 111 / .16), transparent 70%), #07100a; }
+  .pitch svg { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - 44px); }
+
+  /* 9 Componenti */
+  .system { display: grid; grid-template-columns: 1fr 120px; gap: 18px; align-content: start; }
+  .stack { display: grid; gap: 12px; justify-items: start; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; background: var(--turf); font-family: 'Chakra Petch'; font-weight: 600; font-size: 14px; clip-path: polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px); }
+  .dot { width: 20px; height: 20px; border-radius: 50%; background: var(--chalk); }
+  .verdict { display: flex; align-items: center; gap: 8px; font-family: 'Chakra Petch'; font-weight: 600; font-size: 17px; }
+  .verdict.yes { color: var(--neon); }
+  .verdict.no { color: var(--red); }
+  .tally { font-size: 14px; color: var(--muted); }
+  .tally b { font-family: 'Chakra Petch'; font-style: italic; font-size: 26px; color: var(--neon); margin-right: 4px; }
+  .icon-tile img { width: 120px; height: 120px; border-radius: 26px; display: block; }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <section class="panel cover glow">
+    <div class="speed"></div>
+    <div class="lockup">
+      <img src="mark.svg" alt="">
+      <div class="display">Istinto <span class="neon">Puro</span></div>
+    </div>
+    <span class="label">Marchio</span>
+  </section>
+
+  <section class="panel construct">
+    <svg viewBox="0 0 500 360">
+      <!-- griglia -->
+      <g stroke="#1d2b22" stroke-width="1">
+        <line x1="0" y1="180" x2="500" y2="180"/><line x1="250" y1="0" x2="250" y2="360"/>
+        <line x1="0" y1="90" x2="500" y2="90" stroke-dasharray="3 5"/><line x1="0" y1="270" x2="500" y2="270" stroke-dasharray="3 5"/>
+      </g>
+      <g transform="translate(250 180) scale(2.6) translate(-60 -50)">
+        <g transform="translate(10.6 0) skewX(-12)">
+          <circle cx="44" cy="50" r="32" fill="none" stroke="#2a3d31" stroke-width=".6" stroke-dasharray="2 2"/>
+          <circle cx="76" cy="50" r="32" fill="none" stroke="#2a3d31" stroke-width=".6" stroke-dasharray="2 2"/>
+        </g>
+        <image href="mark.svg" x="0" y="0" width="120" height="100"/>
+        <g transform="translate(10.6 0) skewX(-12)">
+          <circle cx="44" cy="50" r="1.4" fill="#8ea395"/><circle cx="76" cy="50" r="1.4" fill="#8ea395"/>
+          <line x1="44" y1="50" x2="76" y2="50" stroke="#8ea395" stroke-width=".5"/>
+        </g>
+        <line x1="60" y1="96" x2="49.4" y2="4" stroke="#3be36f" stroke-width=".5" stroke-dasharray="1.5 1.5"/>
+      </g>
+      <text x="70" y="62">Squadra A</text>
+      <text x="370" y="62">Squadra B</text>
+      <text x="286" y="322" class="hl">Il nome da indovinare</text>
+      <line x1="282" y1="317" x2="262" y2="250" stroke="#3be36f" stroke-width="1"/>
+      <text x="196" y="40">inclinazione 12°</text>
+    </svg>
+    <span class="label">Costruzione: l’incrocio di due carriere</span>
+  </section>
+
+  <section class="panel app glow">
+    <div class="phone">
+      <div class="display wm">Istinto <span class="neon">Puro</span></div>
+      <div class="score"><span class="display num">73</span><span class="caps lbl">giocatori in comune</span></div>
+      <div class="caps match">Juventus <span class="neon">×</span> Napoli</div>
+      <div class="tabs caps"><span>Elenco</span><span class="on">Gioca</span></div>
+      <div class="guess"><span class="in">Scrivi un calciatore</span><span class="btn caps">Prova</span></div>
+    </div>
+    <span class="label">App</span>
+  </section>
+
+  <section class="panel motto">
+    <div class="display">Due maglie.<br><span class="neon">Un nome.</span></div>
+    <span class="label">Motto</span>
+  </section>
+
+  <section class="panel colors">
+    <div class="sw big"><b>Neon</b>#3BE36F</div>
+    <div class="sw night"><b>Notte</b>#060B08</div>
+    <div class="sw turf"><b>Erba scura</b>#132019</div>
+    <div class="sw chalk"><b>Gesso</b>#EEF6F0</div>
+    <div class="sw red"><b>Cartellino</b>#FF6B6B</div>
+    <span class="label">Colori: il rosso solo per gli errori</span>
+  </section>
+
+  <section class="panel type">
+    <div class="display aa">Aa</div>
+    <div class="display row">ABCDEFGHIJKLM 0123456789</div>
+    <p class="body">Geist per i testi: leggibile, neutro, lascia parlare i numeri.</p>
+    <div class="pair"><b>Chakra Petch</b><br>titoli, numeri, anni<br><b>Geist</b><br>testi e interfaccia</div>
+    <span class="label">Caratteri</span>
+  </section>
+
+  <section class="panel ticketwrap">
+    <div class="ticket">
+      <div class="main">
+        <div class="display">Juventus<br><span style="color:#1fa34d">×</span> Napoli</div>
+        <div class="meta"><span>Settore<b>Istinto</b></span><span>Fila<b>1</b></span><span>Posto<b>73</b></span></div>
+      </div>
+      <div class="stub"><img src="mark.svg" alt=""></div>
+    </div>
+    <span class="label">Biglietto da serata quiz</span>
+  </section>
+
+  <section class="panel pitch">
+    <svg viewBox="0 0 500 360" fill="none" stroke="#3be36f" stroke-opacity=".55" stroke-width="1.5">
+      <rect x="20" y="20" width="460" height="320"/>
+      <line x1="250" y1="20" x2="250" y2="340"/>
+      <rect x="20" y="105" width="70" height="150"/><rect x="410" y="105" width="70" height="150"/>
+      <rect x="20" y="145" width="26" height="70"/><rect x="454" y="145" width="26" height="70"/>
+      <!-- il cerchio di centrocampo diventa l'incrocio -->
+      <image href="mark.svg" x="157" y="102.5" width="186" height="155"/>
+      <g stroke="#3be36f" stroke-opacity=".35" stroke-width="1">
+        <line x1="40" y1="60" x2="150" y2="60"/><line x1="60" y1="300" x2="190" y2="300"/><line x1="330" y1="66" x2="460" y2="66"/>
+      </g>
+    </svg>
+    <span class="label">Immagini: il centrocampo è un incrocio</span>
+  </section>
+
+  <section class="panel system">
+    <div class="stack">
+      <div class="verdict yes">✓ Mattia Destro</div>
+      <div class="verdict no">✕ “Totti” non risulta</div>
+      <div class="tally"><b>1</b>su 73 indovinati</div>
+      <span class="chip"><span class="dot"></span>2019-2021</span>
+      <span class="chip"><span class="dot" style="background:#3be36f"></span>2014-2015 (prestito)</span>
+      <div style="display:flex; gap:10px; margin-top:6px">
+        <span class="btn caps">Prova</span>
+        <div class="tabs caps" style="width:200px"><span class="on">Elenco</span><span>Gioca</span></div>
+      </div>
+    </div>
+    <div class="icon-tile"><img src="app-icon.svg" alt=""></div>
+    <span class="label">Componenti e icona</span>
+  </section>
+
+</div>
+</body>
+</html>

@@ -4,3 +4,4 @@ dist
 *.log
 scripts/.cache
 public/rosters
+.playwright-mcp
