@@ -1015,6 +1015,65 @@ img.crest-sm {
   color: var(--muted);
 }
 
+.source p {
+  margin: 0 0 8px;
+}
+
+.source .link-btn {
+  font-size: 0.8125rem;
+}
+
+.credits {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.credits-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.credits-list strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.credits-list a {
+  color: var(--text);
+}
+
+/* ---------- Firma ---------- */
+
+.site-footer {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 0.8125rem;
+  color: var(--muted);
+  max-width: 70ch;
+}
+
+.site-footer p {
+  margin: 0 0 6px;
+}
+
+.signature {
+  font-family: var(--display);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
 /* ---------- Caricamento ---------- */
 
 .skeleton .avatar,

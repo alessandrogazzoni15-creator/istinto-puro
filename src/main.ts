@@ -18,6 +18,7 @@ import { initials, normalize } from './text';
 import { enrichFromWikipedia, type EnrichProgress } from './enrich';
 import { archiveInfo, findInArchive } from './rosters';
 import { checkOnWikipedia, type WikiCheck } from './wikipedia';
+import { loadCredits, type Credit } from './credits';
 
 const MAX_TEAMS = 6;
 
@@ -549,7 +550,11 @@ function renderResults() {
     <div id="mode-area" class="mode-area"></div>
     <p id="extra-status" class="extra-status" hidden></p>
     <div id="list-area"></div>
-    <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> e <a href="https://it.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>.<span id="updated"></span> Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
+    <div class="source">
+      <p>Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> e <a href="https://it.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>.<span id="updated"></span> Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>
+      <button type="button" class="link-btn" data-credits aria-expanded="false" aria-controls="credits">Crediti foto e stemmi</button>
+      <div id="credits" class="credits" hidden></div>
+    </div>`;
   renderModeArea();
   renderList();
   renderExtra();
@@ -786,6 +791,8 @@ results.addEventListener('click', (e) => {
     return;
   }
   if (t.closest('[data-wiki]')) return runWikiCheck();
+  const credits = t.closest<HTMLElement>('[data-credits]');
+  if (credits) return toggleCredits(credits);
   const share = t.closest<HTMLElement>('[data-share]');
   if (share) shareLink(share);
 });
@@ -815,6 +822,45 @@ results.addEventListener('keydown', (e) => {
   if (t.id !== 'filter' || e.key !== 'Enter') return;
   if (results.querySelector('[data-wiki]')) runWikiCheck();
 });
+
+/** Autore e licenza di ogni foto e stemma mostrati (le licenze Creative Commons lo chiedono). */
+async function toggleCredits(btn: HTMLElement) {
+  const panel = results.querySelector<HTMLElement>('#credits');
+  if (!panel) return;
+  const open = panel.hidden;
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+
+  // In gioco i nomi ancora da indovinare non si svelano nemmeno qui
+  const hidden = (p: Player) => state.mode === 'play' && !state.found.has(p.id) && !state.revealed.has(p.id);
+  const items = [
+    ...state.teams.filter((t) => t.logo).map((t) => ({ file: t.logo, label: `Stemma ${displayName(t)}` })),
+    ...allPlayers()
+      .filter((p) => p.image)
+      .map((p) => ({ file: p.image, label: hidden(p) ? 'Giocatore da indovinare' : p.name })),
+  ];
+  if (items.length === 0) {
+    panel.innerHTML = '<p class="muted">Nessuna foto o stemma in questa ricerca.</p>';
+    return;
+  }
+  panel.innerHTML = '<p class="muted">Carico i crediti da Wikimedia Commons...</p>';
+  try {
+    const list = await loadCredits(items);
+    panel.innerHTML = `
+      <p class="muted">Immagini da Wikimedia Commons, ognuna con la sua licenza.</p>
+      <ul class="credits-list">${list.map(creditHtml).join('')}</ul>`;
+  } catch {
+    panel.innerHTML = '<p class="muted">Wikimedia Commons non risponde. Riprova tra poco.</p>';
+  }
+}
+
+function creditHtml(c: Credit): string {
+  const license = c.licenseUrl
+    ? `<a href="${esc(c.licenseUrl)}" target="_blank" rel="noopener">${esc(c.license)}</a>`
+    : esc(c.license);
+  return `<li><strong>${esc(c.label)}</strong>: <a href="${esc(c.page)}" target="_blank" rel="noopener">immagine</a> di ${esc(c.author)}, ${license}</li>`;
+}
 
 async function shareLink(btn: HTMLElement) {
   const url = location.href;

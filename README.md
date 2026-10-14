@@ -5,10 +5,8 @@ Scegli due o più squadre di calcio (club o nazionali) e scopri quali calciatori
 ## Come funziona
 
 - **Squadre**: `public/teams.json` contiene circa 12.800 club e nazionali presi da Wikidata, con nomi italiani, alias e stemmi. I suggerimenti si cercano direttamente nel browser: sono istantanei e non fanno richieste in rete.
-- **Giocatori, prima fonte**: una query SPARQL a [Wikidata](https://query.wikidata.org) (proprietà P54 "squadra di appartenenza", con gli anni dai qualificatori P580/P582). Le squadre rifondate (es. Vicenza Calcio e L.R. Vicenza) contano come una sola.
-- **Giocatori, seconda fonte**: Wikidata a volte ha carriere incomplete. Subito dopo, l'app cerca su Wikipedia italiana le voci che linkano tutte le squadre, tiene i candidati più probabili e ne legge il riquadro della carriera (50 voci per richiesta). I giocatori trovati così sono segnati "da Wikipedia".
-- I risultati restano in cache nel browser per 3 giorni.
-- **Modalità gioco**: "Nascondi nomi" copre i giocatori. Scrivendo un nome in "Controlla un nome" vedi se la risposta è valida senza scoprire gli altri.
+- **Giocatori**: archivio precalcolato in `public/rosters/` (un file per squadra), generato da `npm run teams`, `npm run careers` e `npm run rosters`: carriere da [Wikidata](https://www.wikidata.org) più i periodi che mancano presi da Wikipedia in italiano. L'app incrocia le squadre sul dispositivo, senza query a ogni ricerca. Le squadre rifondate (es. Vicenza Calcio e L.R. Vicenza) contano come una sola. Senza archivio l'app interroga Wikidata e Wikipedia dal vivo.
+- **Modalità**: "Elenco" mostra tutti i giocatori; "Gioca" li copre e si scoprono indovinandoli.
 - Il link contiene le squadre scelte (`?squadre=Q1422,Q2641`), quindi si può condividere.
 
 Non servono server o chiavi API: è un sito statico.
@@ -31,5 +29,8 @@ npm run teams
 ## Limiti noti
 
 - I dati dipendono da Wikidata e Wikipedia italiana: giocatori di serie minori o senza voce su Wikipedia possono mancare, e a volte mancano gli anni.
-- Con squadre che hanno moltissimi giocatori in comune, su Wikipedia si controllano i primi 500 candidati.
 - Prima squadra, giovanili, squadra B e femminile sono voci separate.
+
+## Licenza
+
+© 2026 Alessandro Gazzoni. Tutti i diritti riservati: vedi [LICENSE](LICENSE), che elenca anche le licenze dei materiali di terzi (dati, foto, stemmi, caratteri, icone). App non ufficiale, ispirata al format Istinto Puro di Cronache di Spogliatoio.
