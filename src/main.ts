@@ -1,5 +1,6 @@
 import '@fontsource-variable/geist';
-import '@fontsource-variable/geist-mono';
+import '@fontsource/chakra-petch/600.css';
+import '@fontsource/chakra-petch/700-italic.css';
 import './style.css';
 
 import { icon, type IconName } from './icons';
@@ -40,9 +41,22 @@ const state = {
   active: -1,
   status: { kind: 'idle' } as Status,
   sort: 'famous' as SortMode,
+  /** "Elenco" mostra tutti i giocatori, "Gioca" li copre finché non li indovini. */
+  mode: 'list' as 'list' | 'play',
   filter: '',
-  hidden: false,
+  /** Indovinati in modalità gioco. */
+  found: new Set<string>(),
+  /** Scoperti senza indovinarli (tocco sulla riga o "Mostra tutti"). */
   revealed: new Set<string>(),
+  /** Appena indovinati: si evidenziano una volta. */
+  justFound: new Set<string>(),
+  /** Esito dell'ultimo tentativo in modalità gioco. */
+  verdict: null as
+    | null
+    | { kind: 'yes'; names: string[] }
+    | { kind: 'again'; names: string[] }
+    | { kind: 'no'; guess: string }
+    | { kind: 'vague'; guess: string; count: number },
   /** Animazione d'ingresso solo quando arrivano risultati nuovi. */
   animate: false,
   /** Giocatori aggiunti dalla seconda fonte (Wikipedia), arrivano dopo quelli di Wikidata. */
@@ -160,7 +174,16 @@ function addTeam(team: Team) {
   input.value = '';
   closeSuggestions();
   teamsChanged();
-  if (!input.disabled) input.focus();
+  // Sul telefono, appena ci sono due squadre, si chiude la tastiera e si va ai risultati
+  const touch = matchMedia('(pointer: coarse)').matches;
+  if (touch && state.teams.length >= 2) {
+    input.blur();
+    results.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+  } else if (!input.disabled) input.focus();
+}
+
+function reducedMotion(): boolean {
+  return matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function removeTeam(i: number) {
@@ -230,7 +253,10 @@ function teamsChanged() {
   state.filter = '';
   state.wiki = { kind: 'idle' };
   state.extra = { kind: 'idle' };
+  state.found.clear();
   state.revealed.clear();
+  state.verdict = null;
+  document.body.classList.toggle('has-teams', state.teams.length > 0);
   controller?.abort();
   if (state.teams.length < 2) {
     state.status = { kind: 'idle' };
@@ -303,15 +329,38 @@ function allPlayers(): Player[] {
   return state.extra.kind === 'idle' ? state.status.players : [...state.status.players, ...state.extra.progress.found];
 }
 
-function countTitle(n: number): string {
-  if (n === 0) return 'Nessun giocatore';
-  return `${n} ${n === 1 ? 'giocatore' : 'giocatori'}`;
+function scoreLabel(n: number): string {
+  return n === 1 ? 'giocatore in comune' : 'giocatori in comune';
+}
+
+/** Il numero sale fino al totale, come un tabellone. */
+function animateCount(el: HTMLElement, n: number) {
+  const from = Number(el.dataset.count ?? 0);
+  el.dataset.count = String(n);
+  if (reducedMotion() || from === n) {
+    el.textContent = String(n);
+    return;
+  }
+  const start = performance.now();
+  const duration = Math.min(700, 250 + Math.abs(n - from) * 8);
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = String(Math.round(from + (n - from) * eased));
+    if (t < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 /** Contatore in alto e riga di stato della seconda fonte, senza toccare l'elenco. */
 function renderExtra() {
-  const count = results.querySelector<HTMLElement>('.count');
-  if (count && state.status.kind === 'done') count.textContent = countTitle(allPlayers().length);
+  const count = results.querySelector<HTMLElement>('.score-num');
+  if (count && state.status.kind === 'done') {
+    const n = allPlayers().length;
+    if (count.dataset.count !== String(n)) animateCount(count, n);
+    const label = results.querySelector<HTMLElement>('.score-label');
+    if (label) label.textContent = scoreLabel(n);
+  }
   const line = results.querySelector<HTMLElement>('#extra-status');
   if (!line) return;
   const x = state.extra;
@@ -397,22 +446,27 @@ function avatar(p: Player): string {
   return `<img class="avatar" src="${esc(src)}" alt="" loading="lazy" decoding="async" width="44" height="44" onerror="this.outerHTML=${esc(JSON.stringify(fallback))}">`;
 }
 
-function playerHtml(p: Player, masked: boolean): string {
+function playerHtml(p: Player): string {
+  const masked = state.mode === 'play' && !state.found.has(p.id) && !state.revealed.has(p.id);
   const born = p.fromWikipedia
     ? `<span class="born">da Wikipedia</span>`
     : p.born
       ? `<span class="born">nato nel ${p.born}</span>`
       : '';
+  const cls = ['player'];
+  if (masked) cls.push('is-masked');
+  if (state.found.has(p.id) && state.mode === 'play') cls.push('is-found');
+  if (state.justFound.has(p.id)) cls.push('just-found');
   return `
-    <li class="player${masked ? ' is-masked' : ''}" data-player="${p.id}">
+    <li class="${cls.join(' ')}" data-player="${p.id}">
       ${avatar(p)}
       <div class="who">
         ${
           masked
-            ? `<button type="button" class="reveal" data-reveal="${p.id}">Mostra nome</button>`
-            : `<a class="name" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}<span class="sr-only"> (si apre in una nuova scheda)</span>${icon('external')}</a>`
+            ? `<button type="button" class="reveal" data-reveal="${p.id}" aria-label="Scopri questo giocatore"><span class="reveal-mask" aria-hidden="true"></span><span class="reveal-text">Tocca per scoprirlo</span></button>`
+            : `<a class="name" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}<span class="sr-only"> (si apre in una nuova scheda)</span>${icon('external')}</a>
+        ${born}`
         }
-        ${masked ? '' : born}
       </div>
       <ul class="spells">${spellsHtml(p)}</ul>
     </li>`;
@@ -420,6 +474,12 @@ function playerHtml(p: Player, masked: boolean): string {
 
 function matches(p: Player, q: string): boolean {
   return normalize(p.name).includes(q);
+}
+
+/** Per indovinare: il nome intero, oppure l'inizio di una delle sue parole (es. "destro", "toni"). */
+function guessMatches(p: Player, q: string): boolean {
+  const name = normalize(p.name);
+  return name === q || name.includes(q) && (name.startsWith(q) || name.includes(` ${q}`));
 }
 
 function skeleton(): string {
@@ -439,11 +499,11 @@ function renderResults() {
   results.setAttribute('aria-busy', String(s.kind === 'loading'));
 
   if (s.kind === 'idle') {
-    const need = state.teams.length === 1 ? 'Aggiungi almeno un’altra squadra.' : 'Comincia scegliendo due squadre.';
+    const need = state.teams.length === 1 ? 'Aggiungi un’altra squadra' : 'Scegli due squadre';
     results.innerHTML = `
       <div class="intro">
         <p class="intro-title">${need}</p>
-        <p class="intro-text">L’elenco si aggiorna da solo appena ce ne sono due. Oppure prova con:</p>
+        <p class="intro-text">L’elenco compare da solo. Per cominciare, prova una sfida:</p>
         <ul class="examples">
           ${EXAMPLES.map((ex, i) => `<li><button type="button" class="chip" data-example="${i}">${esc(ex.label)}</button></li>`).join('')}
         </ul>
@@ -451,20 +511,23 @@ function renderResults() {
     return;
   }
 
-  const heading = (title: string) => `
-    <header class="results-head">
-      <h2 class="count">${title}</h2>
-      <p class="sub">in ${esc(teamList(state.teams))}</p>
-    </header>`;
+  const matchup = `<p class="matchup">${state.teams
+    .map((t) => `<span class="matchup-team">${esc(displayName(t))}</span>`)
+    .join('<span class="vs" aria-hidden="true">×</span>')}</p>`;
 
   if (s.kind === 'loading') {
-    results.innerHTML = `${heading('Cerco i giocatori...')}<ul class="players">${skeleton()}</ul>`;
+    results.innerHTML = `
+      <header class="scoreboard is-loading">
+        <p class="score"><span class="score-num">--</span><span class="score-label">cerco i giocatori</span></p>
+        ${matchup}
+      </header>
+      <ul class="players">${skeleton()}</ul>`;
     return;
   }
 
   if (s.kind === 'error') {
     results.innerHTML = `
-      ${heading('Ricerca non riuscita')}
+      <header class="scoreboard">${matchup}</header>
       <div class="notice notice-error" role="alert">
         <p>${esc(s.message)}</p>
         <button type="button" class="btn" data-retry>${icon('retry')}Riprova</button>
@@ -472,42 +535,130 @@ function renderResults() {
     return;
   }
 
+  const n = allPlayers().length;
   results.innerHTML = `
-    ${heading(countTitle(allPlayers().length))}
-    <div class="toolbar">
-      <div class="filter">
-        <label class="sr-only" for="filter">Controlla un nome</label>
-        <span class="combo-icon">${icon('search')}</span>
-        <input id="filter" class="input input-sm" type="search" placeholder="Controlla un nome" value="${esc(state.filter)}" autocomplete="off" spellcheck="false" enterkeyhint="search">
-      </div>
-      <div class="segmented" role="group" aria-label="Ordina">
-        ${(
-          [
-            ['famous', 'Più noti'],
-            ['recent', 'Recenti'],
-            ['alpha', 'A-Z'],
-          ] as const
-        )
-          .map(([v, l]) => `<button type="button" data-sort="${v}" aria-pressed="${state.sort === v}">${l}</button>`)
-          .join('')}
-      </div>
-      <div class="actions">
-        <button type="button" class="btn btn-ghost" data-hide aria-pressed="${state.hidden}">${icon(state.hidden ? 'eye' : 'eyeSlash')}${state.hidden ? 'Mostra nomi' : 'Nascondi nomi'}</button>
-        <button type="button" class="btn btn-ghost" data-share>${icon('link')}<span>Condividi</span></button>
-      </div>
+    <header class="scoreboard">
+      <p class="score"><span class="score-num" data-count="0">0</span><span class="score-label">${scoreLabel(n)}</span></p>
+      ${matchup}
+    </header>
+    <div class="modes" role="tablist" aria-label="Modalità">
+      <button type="button" role="tab" data-mode="list" aria-selected="${state.mode === 'list'}">Elenco</button>
+      <button type="button" role="tab" data-mode="play" aria-selected="${state.mode === 'play'}">Gioca</button>
+      <span class="modes-thumb" aria-hidden="true"></span>
     </div>
+    <div id="mode-area" class="mode-area"></div>
     <p id="extra-status" class="extra-status" hidden></p>
     <div id="list-area"></div>
     <p class="source">Dati da <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a> e <a href="https://it.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>.<span id="updated"></span> Può mancare qualche giocatore, soprattutto di serie minori o con poche presenze.</p>`;
+  renderModeArea();
   renderList();
   renderExtra();
 }
 
-/** Solo l'elenco: così il campo "Controlla un nome" non viene ricreato mentre si scrive. */
+const SORTS = [
+  ['famous', 'Più noti'],
+  ['recent', 'Recenti'],
+  ['alpha', 'A-Z'],
+] as const;
+
+/** Comandi della modalità: ricerca e ordinamento nell'elenco, tentativi nel gioco. */
+function renderModeArea() {
+  const area = results.querySelector<HTMLElement>('#mode-area');
+  if (!area || state.status.kind !== 'done') return;
+  results.querySelector('.modes')?.setAttribute('data-active', state.mode);
+  if (state.mode === 'list') {
+    area.innerHTML = `
+      <div class="toolbar">
+        <div class="filter">
+          <label class="sr-only" for="filter">Cerca nell’elenco</label>
+          <span class="combo-icon">${icon('search')}</span>
+          <input id="filter" class="input input-sm" type="search" placeholder="Cerca nell’elenco" value="${esc(state.filter)}" autocomplete="off" spellcheck="false" enterkeyhint="search">
+        </div>
+        <div class="toolbar-row">
+          <div class="segmented" role="group" aria-label="Ordina">
+            ${SORTS.map(([v, l]) => `<button type="button" data-sort="${v}" aria-pressed="${state.sort === v}">${l}</button>`).join('')}
+          </div>
+          <button type="button" class="icon-btn icon-btn-lg" data-share aria-label="Condividi la sfida">${icon('link')}</button>
+        </div>
+      </div>`;
+    return;
+  }
+  const total = allPlayers().length;
+  area.innerHTML = `
+    <form class="guess" id="guess-form" autocomplete="off">
+      <label class="sr-only" for="guess">Scrivi un calciatore</label>
+      <input id="guess" class="input guess-input" type="text" placeholder="Scrivi un calciatore" spellcheck="false" autocapitalize="words" enterkeyhint="go">
+      <button type="submit" class="btn btn-go">Prova</button>
+    </form>
+    <div class="play-bar">
+      <p class="tally"><strong>${state.found.size}</strong> su ${total} indovinati</p>
+      <button type="button" class="btn btn-ghost" data-give-up ${state.revealed.size + state.found.size >= total ? 'disabled' : ''}>${icon('eye')}Mostra tutti</button>
+      <button type="button" class="icon-btn icon-btn-lg" data-share aria-label="Condividi la sfida">${icon('link')}</button>
+    </div>
+    <div id="feedback" class="feedback" aria-live="polite">${feedbackHtml()}</div>`;
+}
+
+function feedbackHtml(): string {
+  const v = state.verdict;
+  if (!v) return '';
+  if (v.kind === 'yes') return `<p class="verdict verdict-yes">${icon('check')}${esc(v.names.join(', '))}</p>`;
+  if (v.kind === 'again') return `<p class="verdict verdict-again">${esc(v.names.join(', '))}: già indovinato</p>`;
+  if (v.kind === 'vague') return `<p class="verdict verdict-again">“${esc(v.guess)}” vale per ${v.count} giocatori: scrivi anche il cognome</p>`;
+  // Sbagliato: si può ancora controllare su Wikipedia, che a volte ha carriere più complete
+  const wiki = state.wiki;
+  let extra = `<button type="button" class="link-btn" data-wiki>Controlla su Wikipedia</button>`;
+  if (wiki.kind === 'loading') extra = `<span class="muted">controllo su Wikipedia...</span>`;
+  if (wiki.kind === 'error') extra = `<span class="muted">Wikipedia non risponde</span>`;
+  if (wiki.kind === 'done') extra = wikiHtml();
+  return `<p class="verdict verdict-no">${icon('x')}“${esc(v.guess)}” non risulta</p>${extra}`;
+}
+
+function submitGuess(raw: string) {
+  const guess = raw.trim();
+  const q = normalize(guess);
+  if (q.length < 3) return;
+  const hits = allPlayers().filter((p) => guessMatches(p, q));
+  state.wiki = { kind: 'idle' };
+  state.filter = guess; // serve al controllo su Wikipedia
+  if (hits.length === 0) {
+    state.verdict = { kind: 'no', guess };
+  } else if (hits.length > 3) {
+    state.verdict = { kind: 'vague', guess, count: hits.length };
+  } else {
+    const fresh = hits.filter((p) => !state.found.has(p.id) && !state.revealed.has(p.id));
+    if (fresh.length) {
+      fresh.forEach((p) => {
+        state.found.add(p.id);
+        state.justFound.add(p.id);
+      });
+      state.verdict = { kind: 'yes', names: fresh.map((p) => p.name) };
+    } else {
+      state.verdict = { kind: 'again', names: hits.map((p) => p.name) };
+    }
+  }
+  renderModeArea();
+  renderList();
+  const input = results.querySelector<HTMLInputElement>('#guess');
+  if (state.verdict.kind === 'yes' && input) input.value = '';
+  else if (input) {
+    input.value = guess;
+    if (state.verdict.kind === 'no' && !reducedMotion()) {
+      input.classList.remove('shake');
+      void input.offsetWidth; // riavvia l'animazione
+      input.classList.add('shake');
+    }
+  }
+  input?.focus();
+  // Porta in vista il primo giocatore indovinato
+  const first = state.verdict.kind === 'yes' ? results.querySelector('.just-found') : null;
+  first?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'nearest' });
+  state.justFound.clear();
+}
+
+/** Solo l'elenco: così i campi di ricerca non vengono ricreati mentre si scrive. */
 function renderList() {
   const area = results.querySelector<HTMLElement>('#list-area');
   if (!area || state.status.kind !== 'done') return;
-  const q = normalize(state.filter);
   const everyone = allPlayers();
   if (everyone.length === 0) {
     area.innerHTML =
@@ -515,68 +666,62 @@ function renderList() {
         ? ''
         : `<div class="notice">
         <p>Nessuno risulta aver giocato in tutte queste squadre.</p>
-        <p class="muted">Se ti viene in mente qualcuno, scrivilo in “Controlla un nome”. E controlla di aver scelto la squadra giusta: prima squadra, giovanili e femminile sono voci separate.</p>
+        <p class="muted">Controlla di aver scelto la squadra giusta: prima squadra, giovanili e femminile sono voci separate.</p>
       </div>`;
     return;
   }
   const sorted = sortPlayers(everyone, state.sort);
+  const q = state.mode === 'list' ? normalize(state.filter) : '';
   const visible = q ? sorted.filter((p) => matches(p, q)) : sorted;
 
-  // In modalità gioco i nomi restano coperti, tranne quelli scoperti o cercati per nome
-  const masked = (p: Player) => state.hidden && !state.revealed.has(p.id) && q.length < 3;
-
-  const wiki = state.wiki;
-  const wikiFound = !visible.length && wiki.kind === 'done' && wiki.result;
-  const wikiYes = wikiFound && wiki.result!.perTeam.every((t) => t.years.length > 0);
-
-  const verdict =
-    state.hidden && q.length >= 3
-      ? visible.length || wikiYes
-        ? `<p class="verdict verdict-yes">${icon('check')}${visible.length ? 'Risposta valida' : 'Valida secondo Wikipedia'}</p>`
-        : `<p class="verdict verdict-no">${icon('x')}Non risulta</p>`
-      : '';
-
-  const body = visible.length
-    ? `<ul class="players${state.animate ? ' animate' : ''}">${visible.map((p) => playerHtml(p, masked(p))).join('')}</ul>`
-    : q.length >= 3
-      ? wikiHtml()
-      : `<div class="notice"><p>Nessun giocatore valido si chiama “${esc(state.filter.trim())}”.</p></div>`;
+  let body: string;
+  if (visible.length) {
+    // In gioco gli indovinati salgono in cima, nell'ordine scelto
+    const ordered =
+      state.mode === 'play'
+        ? [...visible.filter((p) => state.found.has(p.id)), ...visible.filter((p) => !state.found.has(p.id))]
+        : visible;
+    body = `<ul class="players${state.animate ? ' animate' : ''}">${ordered.map(playerHtml).join('')}</ul>`;
+  } else if (q.length >= 3) {
+    body = `<div class="notice">${listWikiHtml()}</div>`;
+  } else {
+    body = `<div class="notice"><p>Nessuno nell’elenco si chiama “${esc(state.filter.trim())}”.</p></div>`;
+  }
   state.animate = false;
-
-  area.innerHTML = verdict + body;
+  area.innerHTML = body;
 }
 
-function wikiHtml(): string {
+/** Elenco filtrato senza risultati: invito a controllare su Wikipedia. */
+function listWikiHtml(): string {
   const typed = esc(state.filter.trim());
   const wiki = state.wiki;
   if (wiki.kind === 'idle') {
-    return `<div class="notice">
-      <p>“${typed}” non è nell’elenco. Wikidata però a volte non ha tutta la carriera di un giocatore.</p>
-      <button type="button" class="btn" data-wiki>${icon('search')}Controlla su Wikipedia</button>
-    </div>`;
+    return `<p>“${typed}” non è nell’elenco.</p>
+      <button type="button" class="btn" data-wiki>${icon('search')}Controlla su Wikipedia</button>`;
   }
-  if (wiki.kind === 'loading') {
-    return `<div class="notice"><p class="muted">Controllo la carriera su Wikipedia...</p></div>`;
-  }
+  if (wiki.kind === 'loading') return `<p class="muted">Controllo la carriera su Wikipedia...</p>`;
   if (wiki.kind === 'error') {
-    return `<div class="notice notice-error"><p>Wikipedia non ha risposto.</p>
-      <button type="button" class="btn" data-wiki>${icon('retry')}Riprova</button></div>`;
+    return `<p>Wikipedia non ha risposto.</p><button type="button" class="btn" data-wiki>${icon('retry')}Riprova</button>`;
   }
-  const r = wiki.result;
-  if (!r) return `<div class="notice"><p>Su Wikipedia non trovo un calciatore che si chiama “${typed}”.</p></div>`;
+  return wikiHtml();
+}
 
+function wikiHtml(): string {
+  const wiki = state.wiki;
+  if (wiki.kind !== 'done') return '';
+  const r = wiki.result;
+  if (!r) return `<p class="muted">Su Wikipedia non trovo un calciatore con questo nome.</p>`;
   const name = `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>`;
   const line = (t: { teamId: string; years: string[] }) => {
     const team = state.teams.find((x) => x.id === t.teamId)!;
     return t.years.length
-      ? `<li class="spell">${crest(team, 'sm')}<span class="years">${esc(displayName(team))} ${esc(t.years.join(', '))}</span></li>`
-      : `<li class="spell spell-missing">${crest(team, 'sm')}<span class="years">mai in ${esc(displayName(team))}</span></li>`;
+      ? `<li class="spell">${crest(team, 'sm')}<span class="years">${esc(t.years.join(', '))}</span></li>`
+      : `<li class="spell spell-missing">${crest(team, 'sm')}<span class="years">mai</span></li>`;
   };
   const all = r.perTeam.every((t) => t.years.length > 0);
-  return `<div class="notice">
+  return `<div class="wiki-result">
     <p>${all ? `Secondo Wikipedia ${name} ha giocato in tutte le squadre:` : `Secondo Wikipedia ${name} non ha giocato in tutte le squadre:`}</p>
     <ul class="spells">${r.perTeam.map(line).join('')}</ul>
-    ${all ? '<p class="muted">Su Wikidata questo periodo manca, per questo non era nell’elenco.</p>' : ''}
   </div>`;
 }
 
@@ -584,7 +729,10 @@ async function runWikiCheck() {
   const name = state.filter.trim();
   const groups = state.teams.map(teamIds);
   state.wiki = { kind: 'loading' };
-  renderList();
+  if (state.mode === 'play') {
+    const fb = results.querySelector<HTMLElement>('#feedback');
+    if (fb) fb.innerHTML = feedbackHtml();
+  } else renderList();
   try {
     const result = await checkOnWikipedia(name, groups);
     if (state.filter.trim() !== name) return; // nel frattempo si è scritto altro
@@ -593,7 +741,10 @@ async function runWikiCheck() {
     if (state.filter.trim() !== name) return;
     state.wiki = { kind: 'error' };
   }
-  renderList();
+  if (state.mode === 'play') {
+    const fb = results.querySelector<HTMLElement>('#feedback');
+    if (fb) fb.innerHTML = feedbackHtml();
+  } else renderList();
 }
 
 results.addEventListener('click', (e) => {
@@ -601,15 +752,31 @@ results.addEventListener('click', (e) => {
   const ex = t.closest<HTMLElement>('[data-example]');
   if (ex) return setTeams(EXAMPLES[Number(ex.dataset.example)].ids);
   if (t.closest('[data-retry]')) return runSearch();
+  const mode = t.closest<HTMLElement>('[data-mode]');
+  if (mode) {
+    const next = mode.dataset.mode as 'list' | 'play';
+    if (next === state.mode) return;
+    state.mode = next;
+    state.filter = '';
+    state.wiki = { kind: 'idle' };
+    state.verdict = null;
+    results.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-selected', String(b === mode)));
+    renderModeArea();
+    renderList();
+    if (next === 'play' && matchMedia('(pointer: fine)').matches) results.querySelector<HTMLElement>('#guess')?.focus();
+    return;
+  }
   const sort = t.closest<HTMLElement>('[data-sort]');
   if (sort) {
     state.sort = sort.dataset.sort as SortMode;
-    return renderAndKeepFocus(`[data-sort="${state.sort}"]`);
+    results.querySelectorAll('[data-sort]').forEach((b) => b.setAttribute('aria-pressed', String(b === sort)));
+    return renderList();
   }
-  if (t.closest('[data-hide]')) {
-    state.hidden = !state.hidden;
-    state.revealed.clear();
-    return renderAndKeepFocus('[data-hide]');
+  if (t.closest('[data-give-up]')) {
+    allPlayers().forEach((p) => state.found.has(p.id) || state.revealed.add(p.id));
+    state.verdict = null;
+    renderModeArea();
+    return renderList();
   }
   const reveal = t.closest<HTMLElement>('[data-reveal]');
   if (reveal) {
@@ -623,25 +790,31 @@ results.addEventListener('click', (e) => {
   if (share) shareLink(share);
 });
 
+results.addEventListener('submit', (e) => {
+  const form = e.target as HTMLFormElement;
+  if (form.id !== 'guess-form') return;
+  e.preventDefault();
+  submitGuess(form.querySelector<HTMLInputElement>('#guess')!.value);
+});
+
 results.addEventListener('input', (e) => {
   const t = e.target as HTMLInputElement;
+  if (t.id === 'guess') {
+    t.classList.remove('shake');
+    return;
+  }
   if (t.id !== 'filter') return;
   state.filter = t.value;
   state.wiki = { kind: 'idle' };
   renderList();
 });
 
-// Invio nel campo nome: se non è nell'elenco, controlla direttamente su Wikipedia
+// Invio nel campo di ricerca: se il nome non è nell'elenco, controlla direttamente su Wikipedia
 results.addEventListener('keydown', (e) => {
   const t = e.target as HTMLInputElement;
   if (t.id !== 'filter' || e.key !== 'Enter') return;
   if (results.querySelector('[data-wiki]')) runWikiCheck();
 });
-
-function renderAndKeepFocus(selector: string) {
-  renderResults();
-  results.querySelector<HTMLElement>(selector)?.focus();
-}
 
 async function shareLink(btn: HTMLElement) {
   const url = location.href;
@@ -652,9 +825,14 @@ async function shareLink(btn: HTMLElement) {
       return;
     }
     await navigator.clipboard.writeText(url);
-    btn.innerHTML = `${icon('check')}<span>Link copiato</span>`;
+    btn.innerHTML = icon('check');
+    btn.classList.add('is-done');
+    btn.setAttribute('aria-label', 'Link copiato');
     setTimeout(() => {
-      if (btn.isConnected) btn.innerHTML = `${icon('link')}<span>Condividi</span>`;
+      if (!btn.isConnected) return;
+      btn.innerHTML = icon('link');
+      btn.classList.remove('is-done');
+      btn.setAttribute('aria-label', 'Condividi la sfida');
     }, 2000);
   } catch {
     // Condivisione annullata dall'utente: niente da fare
@@ -679,6 +857,8 @@ function idsFromUrl(): string[] {
 
 renderPicked();
 renderResults();
+// Animazione del titolo una sola volta, all'apertura
+requestAnimationFrame(() => document.body.classList.add('is-ready'));
 
 loadTeams()
   .then((index) => {
