@@ -55,6 +55,19 @@ export class TeamIndex {
     return this.byId.get(id);
   }
 
+  /** Le squadre più note (l'indice è già in ordine di notorietà), per le sfide casuali. */
+  top(n: number, national: boolean): Team[] {
+    const out: Team[] = [];
+    for (const { team } of this.items) {
+      if (team.national !== national) continue;
+      // Le nazionali giovanili e femminili non sono "la nazionale"
+      if (national && !/^nazionale (maschile )?di calcio d/i.test(team.name)) continue;
+      out.push(team);
+      if (out.length === n) break;
+    }
+    return out;
+  }
+
   get size(): number {
     return this.items.length;
   }

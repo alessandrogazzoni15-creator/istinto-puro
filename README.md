@@ -7,6 +7,8 @@ Scegli due o più squadre di calcio (club o nazionali) e scopri quali calciatori
 - **Squadre**: `public/teams.json` contiene circa 12.800 club e nazionali presi da Wikidata, con nomi italiani, alias e stemmi. I suggerimenti si cercano direttamente nel browser: sono istantanei e non fanno richieste in rete.
 - **Giocatori**: archivio precalcolato in `public/rosters/` (un file per squadra), generato da `npm run teams`, `npm run careers` e `npm run rosters`: carriere da [Wikidata](https://www.wikidata.org) più i periodi che mancano presi da Wikipedia in italiano. L'app incrocia le squadre sul dispositivo, senza query a ogni ricerca. Le squadre rifondate (es. Vicenza Calcio e L.R. Vicenza) contano come una sola. Senza archivio l'app interroga Wikidata e Wikipedia dal vivo.
 - **Modalità**: "Elenco" mostra tutti i giocatori; "Gioca" li copre e si scoprono indovinandoli.
+- **Sfida casuale**: scegli 2, 3 o 4 squadre e l'app ne estrae di note (più spesso italiane) con almeno 3 giocatori in comune.
+- **Aiuti**: 3 a sfida, +1 per ogni giocatore indovinato. Toccando un giocatore coperto si sbloccano, uno per aiuto, l'anno di nascita, le iniziali e la foto; poi il nome.
 - Il link contiene le squadre scelte (`?squadre=Q1422,Q2641`), quindi si può condividere.
 
 Non servono server o chiavi API: è un sito statico.

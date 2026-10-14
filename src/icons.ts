@@ -7,8 +7,10 @@ import retry from '@phosphor-icons/core/assets/bold/arrow-clockwise-bold.svg?raw
 import shield from '@phosphor-icons/core/assets/bold/shield-bold.svg?raw';
 import link from '@phosphor-icons/core/assets/bold/link-bold.svg?raw';
 import check from '@phosphor-icons/core/assets/bold/check-bold.svg?raw';
+import shuffle from '@phosphor-icons/core/assets/bold/shuffle-bold.svg?raw';
+import bulb from '@phosphor-icons/core/assets/bold/lightbulb-bold.svg?raw';
 
-const raw = { x, search, eye, eyeSlash, external, retry, shield, link, check };
+const raw = { x, search, eye, eyeSlash, external, retry, shield, link, check, shuffle, bulb };
 
 export type IconName = keyof typeof raw;
 

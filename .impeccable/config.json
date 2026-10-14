@@ -1,0 +1,23 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "createdAt": "2026-10-14T08:17:31.925Z",
+        "reason": "Geist è il carattere sans preferito dall'utente (memoria: feedback-design-skills-before-decks), usato nell'app live"
+      },
+      {
+        "rule": "radial-spotlight-glow",
+        "value": "*",
+        "files": [
+          "brand/brandkit.html"
+        ],
+        "createdAt": "2026-10-14T08:17:31.966Z",
+        "reason": "Luce verde radiale ripresa dal banner di Cronache di Spogliatoio, riferimento del brand; coerente con l'app live"
+      }
+    ]
+  }
+}

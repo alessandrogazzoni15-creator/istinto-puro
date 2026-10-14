@@ -19,8 +19,11 @@ import { enrichFromWikipedia, type EnrichProgress } from './enrich';
 import { archiveInfo, findInArchive } from './rosters';
 import { checkOnWikipedia, type WikiCheck } from './wikipedia';
 import { loadCredits, type Credit } from './credits';
+import { drawChallenge } from './random';
 
 const MAX_TEAMS = 6;
+/** Aiuti all'inizio di ogni sfida; se ne sblocca uno per ogni giocatore indovinato. */
+const START_HINTS = 3;
 
 const EXAMPLES: { label: string; ids: string[] }[] = [
   { label: 'Juventus e Napoli', ids: ['Q1422', 'Q2641'] },
@@ -51,9 +54,17 @@ const state = {
   revealed: new Set<string>(),
   /** Appena indovinati: si evidenziano una volta. */
   justFound: new Set<string>(),
+  /** Aiuti disponibili e indizi già scoperti per ogni giocatore. */
+  hints: START_HINTS,
+  hintLevel: new Map<string, number>(),
+  /** Sfida casuale: quante squadre estrarre e se le squadre attuali vengono da un'estrazione. */
+  randomCount: 2,
+  fromDraw: false,
+  drawing: false,
   /** Esito dell'ultimo tentativo in modalità gioco. */
   verdict: null as
     | null
+    | { kind: 'nohint' }
     | { kind: 'yes'; names: string[] }
     | { kind: 'again'; names: string[] }
     | { kind: 'no'; guess: string }
@@ -193,13 +204,53 @@ function removeTeam(i: number) {
   input.focus();
 }
 
-function setTeams(ids: string[]) {
+function setTeams(ids: string[], fromDraw = false) {
   if (!state.index) return;
   state.teams = ids
     .map((id) => state.index!.get(id))
     .filter((t): t is Team => !!t)
     .slice(0, MAX_TEAMS);
-  teamsChanged();
+  teamsChanged(fromDraw);
+}
+
+// ---------- Sfida casuale ----------
+
+const drawBtn = $<HTMLButtonElement>('#draw');
+const drawHelp = $<HTMLParagraphElement>('#draw-help');
+const DRAW_HELP = drawHelp.textContent ?? '';
+
+document.querySelector('.random [role="radiogroup"]')!.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-count]');
+  if (!b) return;
+  state.randomCount = Number(b.dataset.count);
+  document.querySelectorAll('.random [data-count]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+});
+
+drawBtn.addEventListener('click', () => drawRandom());
+
+async function drawRandom() {
+  if (!state.index || state.drawing) return;
+  state.drawing = true;
+  drawBtn.disabled = true;
+  drawBtn.classList.add('is-drawing');
+  drawHelp.textContent = 'Estraggo le squadre...';
+  drawHelp.classList.remove('help-error');
+  try {
+    const ids = await drawChallenge(state.index, state.randomCount);
+    state.mode = 'play';
+    setTeams(ids, true);
+    drawHelp.textContent = DRAW_HELP;
+    if (matchMedia('(max-width: 899px)').matches) {
+      results.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    }
+  } catch {
+    drawHelp.textContent = 'Non sono riuscito a estrarre una sfida. Riprova.';
+    drawHelp.classList.add('help-error');
+  } finally {
+    state.drawing = false;
+    drawBtn.disabled = false;
+    drawBtn.classList.remove('is-drawing');
+  }
 }
 
 input.addEventListener('input', updateSuggestions);
@@ -248,7 +299,10 @@ picked.addEventListener('click', (e) => {
 
 let controller: AbortController | null = null;
 
-function teamsChanged() {
+function teamsChanged(fromDraw = false) {
+  state.fromDraw = fromDraw;
+  state.hints = START_HINTS;
+  state.hintLevel.clear();
   renderPicked();
   syncUrl();
   state.filter = '';
@@ -447,6 +501,24 @@ function avatar(p: Player): string {
   return `<img class="avatar" src="${esc(src)}" alt="" loading="lazy" decoding="async" width="44" height="44" onerror="this.outerHTML=${esc(JSON.stringify(fallback))}">`;
 }
 
+/** Indizi possibili per un giocatore, nell'ordine in cui si sbloccano. */
+function hintSteps(p: Player): ('born' | 'initials' | 'photo')[] {
+  const steps: ('born' | 'initials' | 'photo')[] = [];
+  if (p.born) steps.push('born');
+  steps.push('initials');
+  if (p.image || p.thumb) steps.push('photo');
+  return steps;
+}
+
+function initialsOf(name: string): string {
+  return name
+    .replace(/\(.*?\)/g, '')
+    .trim()
+    .split(/\s+/)
+    .map((w) => `${w[0].toUpperCase()}.`)
+    .join(' ');
+}
+
 function playerHtml(p: Player): string {
   const masked = state.mode === 'play' && !state.found.has(p.id) && !state.revealed.has(p.id);
   const born = p.fromWikipedia
@@ -458,17 +530,30 @@ function playerHtml(p: Player): string {
   if (masked) cls.push('is-masked');
   if (state.found.has(p.id) && state.mode === 'play') cls.push('is-found');
   if (state.justFound.has(p.id)) cls.push('just-found');
+
+  let who: string;
+  if (masked) {
+    const steps = hintSteps(p);
+    const level = state.hintLevel.get(p.id) ?? 0;
+    const shown = steps.slice(0, level);
+    if (shown.includes('photo')) cls.push('hint-photo');
+    const chips = shown
+      .filter((s) => s !== 'photo')
+      .map((s) => `<span class="hint-chip">${s === 'born' ? `Nato nel ${p.born}` : esc(initialsOf(p.name))}</span>`)
+      .join('');
+    const action =
+      level >= steps.length ? 'Mostra il nome' : state.hints > 0 ? 'Usa un aiuto' : 'Nessun aiuto';
+    who = `<button type="button" class="reveal${level ? ' has-hints' : ''}" data-hint="${p.id}" aria-label="${action}">
+        ${level ? `<span class="hint-chips">${chips}<span class="hint-next">${level >= steps.length ? 'Mostra nome' : `${icon('bulb')}Altro indizio`}</span></span>` : `<span class="reveal-mask" aria-hidden="true"></span><span class="reveal-text">${icon('bulb')}Usa un aiuto</span>`}
+      </button>`;
+  } else {
+    who = `<a class="name" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}<span class="sr-only"> (si apre in una nuova scheda)</span>${icon('external')}</a>
+        ${born}`;
+  }
   return `
     <li class="${cls.join(' ')}" data-player="${p.id}">
       ${avatar(p)}
-      <div class="who">
-        ${
-          masked
-            ? `<button type="button" class="reveal" data-reveal="${p.id}" aria-label="Scopri questo giocatore"><span class="reveal-mask" aria-hidden="true"></span><span class="reveal-text">Tocca per scoprirlo</span></button>`
-            : `<a class="name" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}<span class="sr-only"> (si apre in una nuova scheda)</span>${icon('external')}</a>
-        ${born}`
-        }
-      </div>
+      <div class="who">${who}</div>
       <ul class="spells">${spellsHtml(p)}</ul>
     </li>`;
 }
@@ -504,7 +589,7 @@ function renderResults() {
     results.innerHTML = `
       <div class="intro">
         <p class="intro-title">${need}</p>
-        <p class="intro-text">L’elenco compare da solo. Per cominciare, prova una sfida:</p>
+        <p class="intro-text">L’elenco compare da solo. Oppure fatti estrarre una sfida casuale, o prova una di queste:</p>
         <ul class="examples">
           ${EXAMPLES.map((ex, i) => `<li><button type="button" class="chip" data-example="${i}">${esc(ex.label)}</button></li>`).join('')}
         </ul>
@@ -537,10 +622,14 @@ function renderResults() {
   }
 
   const n = allPlayers().length;
+  const redraw = state.fromDraw
+    ? `<button type="button" class="btn btn-ghost redraw" data-redraw>${icon('shuffle')}Nuova estrazione</button>`
+    : '';
   results.innerHTML = `
     <header class="scoreboard">
       <p class="score"><span class="score-num" data-count="0">0</span><span class="score-label">${scoreLabel(n)}</span></p>
       ${matchup}
+      ${redraw}
     </header>
     <div class="modes" role="tablist" aria-label="Modalità">
       <button type="button" role="tab" data-mode="list" aria-selected="${state.mode === 'list'}">Elenco</button>
@@ -597,6 +686,7 @@ function renderModeArea() {
     </form>
     <div class="play-bar">
       <p class="tally"><strong>${state.found.size}</strong> su ${total} indovinati</p>
+      <p class="hints${state.hints === 0 ? ' is-empty' : ''}" title="Tocca un giocatore coperto per usare un aiuto">${icon('bulb')}<strong>${state.hints}</strong> ${state.hints === 1 ? 'aiuto' : 'aiuti'}</p>
       <button type="button" class="btn btn-ghost" data-give-up ${state.revealed.size + state.found.size >= total ? 'disabled' : ''}>${icon('eye')}Mostra tutti</button>
       <button type="button" class="icon-btn icon-btn-lg" data-share aria-label="Condividi la sfida">${icon('link')}</button>
     </div>
@@ -606,7 +696,11 @@ function renderModeArea() {
 function feedbackHtml(): string {
   const v = state.verdict;
   if (!v) return '';
-  if (v.kind === 'yes') return `<p class="verdict verdict-yes">${icon('check')}${esc(v.names.join(', '))}</p>`;
+  if (v.kind === 'yes') {
+    const n = v.names.length;
+    return `<p class="verdict verdict-yes">${icon('check')}${esc(v.names.join(', '))}<span class="unlock">+${n} ${n === 1 ? 'aiuto' : 'aiuti'}</span></p>`;
+  }
+  if (v.kind === 'nohint') return `<p class="verdict verdict-again">Aiuti finiti: indovina un nome per sbloccarne un altro</p>`;
   if (v.kind === 'again') return `<p class="verdict verdict-again">${esc(v.names.join(', '))}: già indovinato</p>`;
   if (v.kind === 'vague') return `<p class="verdict verdict-again">“${esc(v.guess)}” vale per ${v.count} giocatori: scrivi anche il cognome</p>`;
   // Sbagliato: si può ancora controllare su Wikipedia, che a volte ha carriere più complete
@@ -636,6 +730,7 @@ function submitGuess(raw: string) {
         state.found.add(p.id);
         state.justFound.add(p.id);
       });
+      state.hints += fresh.length; // ogni giocatore indovinato sblocca un aiuto
       state.verdict = { kind: 'yes', names: fresh.map((p) => p.name) };
     } else {
       state.verdict = { kind: 'again', names: hits.map((p) => p.name) };
@@ -783,13 +878,9 @@ results.addEventListener('click', (e) => {
     renderModeArea();
     return renderList();
   }
-  const reveal = t.closest<HTMLElement>('[data-reveal]');
-  if (reveal) {
-    state.revealed.add(reveal.dataset.reveal!);
-    renderList();
-    results.querySelector<HTMLElement>(`[data-player="${reveal.dataset.reveal}"] .name`)?.focus();
-    return;
-  }
+  if (t.closest('[data-redraw]')) return drawRandom();
+  const hint = t.closest<HTMLElement>('[data-hint]');
+  if (hint) return useHint(hint.dataset.hint!);
   if (t.closest('[data-wiki]')) return runWikiCheck();
   const credits = t.closest<HTMLElement>('[data-credits]');
   if (credits) return toggleCredits(credits);
@@ -822,6 +913,29 @@ results.addEventListener('keydown', (e) => {
   if (t.id !== 'filter' || e.key !== 'Enter') return;
   if (results.querySelector('[data-wiki]')) runWikiCheck();
 });
+
+/** Tocco su un giocatore coperto: un indizio in più (costa un aiuto), poi il nome. */
+function useHint(id: string) {
+  const p = allPlayers().find((x) => x.id === id);
+  if (!p) return;
+  const level = state.hintLevel.get(id) ?? 0;
+  if (level >= hintSteps(p).length) {
+    state.revealed.add(id);
+    renderList();
+    results.querySelector<HTMLElement>(`[data-player="${id}"] .name`)?.focus();
+    return;
+  }
+  if (state.hints === 0) {
+    state.verdict = { kind: 'nohint' };
+  } else {
+    state.hints--;
+    state.hintLevel.set(id, level + 1);
+    state.verdict = null;
+  }
+  renderModeArea();
+  renderList();
+  results.querySelector<HTMLElement>(`[data-hint="${id}"]`)?.focus();
+}
 
 /** Autore e licenza di ogni foto e stemma mostrati (le licenze Creative Commons lo chiedono). */
 async function toggleCredits(btn: HTMLElement) {
@@ -909,6 +1023,11 @@ requestAnimationFrame(() => document.body.classList.add('is-ready'));
 loadTeams()
   .then((index) => {
     state.index = index;
+    // L'estrazione usa l'archivio delle rose: senza archivio resta spenta
+    archiveInfo().then((a) => {
+      drawBtn.disabled = !a;
+      if (!a) drawHelp.textContent = 'Disponibile nella versione online.';
+    });
     const ids = idsFromUrl();
     if (ids.length) setTeams(ids);
     else renderPicked();

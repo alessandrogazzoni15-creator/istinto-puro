@@ -45,6 +45,19 @@
           </div>
           <p id="team-help" class="help">Club o nazionali, in qualsiasi lingua. Fino a 6 squadre.</p>
         </div>
+
+        <div class="random" aria-labelledby="random-label">
+          <p id="random-label" class="label">Sfida casuale</p>
+          <div class="random-row">
+            <div class="segmented" role="radiogroup" aria-label="Quante squadre estrarre">
+              <button type="button" role="radio" data-count="2" aria-checked="true">2</button>
+              <button type="button" role="radio" data-count="3" aria-checked="false">3</button>
+              <button type="button" role="radio" data-count="4" aria-checked="false">4</button>
+            </div>
+            <button type="button" class="btn" id="draw" disabled><span data-icon="shuffle"></span>Estrai</button>
+          </div>
+          <p id="draw-help" class="help">Squadre a caso, con almeno 3 giocatori in comune.</p>
+        </div>
       </section>
 
       <main id="results" class="results" aria-live="polite" aria-busy="false"></main>

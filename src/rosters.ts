@@ -41,6 +41,14 @@ function roster(id: string): Promise<RosterRow[]> {
   return p;
 }
 
+/** Tutti i giocatori (id numerici) passati per una squadra, unendo le voci di una squadra rifondata. */
+export async function rosterPlayers(ids: string[]): Promise<Set<number>> {
+  const lists = await Promise.all(ids.map(roster));
+  const out = new Set<number>();
+  for (const list of lists) for (const row of list) out.add(row[0]);
+  return out;
+}
+
 function wikiUrl(wiki: string, id: string): string {
   const m = /^(it|en):(.+)$/.exec(wiki);
   if (!m) return `https://www.wikidata.org/wiki/${id}`;

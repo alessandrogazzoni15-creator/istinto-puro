@@ -421,6 +421,57 @@ img.crest-sm {
   font-size: 0.9375rem;
 }
 
+/* ---------- Sfida casuale ---------- */
+
+.random {
+  display: grid;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.random-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.random .segmented button {
+  min-width: 44px;
+  height: 38px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.random .segmented button[aria-checked='true'] {
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.random .btn {
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn.is-drawing .icon {
+    animation: spin 0.6s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.redraw {
+  margin-top: 10px;
+  margin-left: -12px;
+}
+
 /* ---------- Pulsanti ---------- */
 
 .btn {
@@ -716,6 +767,7 @@ img.crest-sm {
 
 .play-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 10px;
@@ -725,6 +777,37 @@ img.crest-sm {
   margin: 0 auto 0 0;
   color: var(--muted);
   font-size: 0.9375rem;
+}
+
+.hints {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 4px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.875rem;
+  clip-path: polygon(var(--cut-sm) 0, 100% 0, 100% calc(100% - var(--cut-sm)), calc(100% - var(--cut-sm)) 100%, 0 100%, 0 var(--cut-sm));
+}
+
+.hints strong {
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 1.0625rem;
+}
+
+.hints.is-empty {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.unlock {
+  margin-left: 4px;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.8125rem;
 }
 
 .tally strong {
@@ -963,6 +1046,69 @@ img.crest-sm {
   color: var(--text);
   opacity: 0;
   transition: opacity 0.2s;
+}
+
+.reveal-text .icon {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+/* Sul telefono non c'è il passaggio del mouse: l'invito resta visibile */
+@media (hover: none) {
+  .reveal-mask {
+    opacity: 0.35;
+  }
+  .reveal-text {
+    opacity: 1;
+    color: var(--muted);
+  }
+}
+
+.reveal.has-hints {
+  width: auto;
+  height: auto;
+  text-align: left;
+}
+
+.hint-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hint-chip {
+  padding: 3px 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.hint-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.reveal.has-hints:hover .hint-next {
+  color: var(--text);
+}
+
+/* Indizio "foto": l'immagine si mette a fuoco */
+.is-masked.hint-photo .avatar {
+  filter: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hint-chip {
+    animation: pop 0.3s var(--ease);
+  }
 }
 
 .reveal:hover .reveal-mask,
